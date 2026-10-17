@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import Sidebar from '@/components/Sidebar';
 import { useProfile } from '@/lib/useProfile';
+import { supabase } from '@/lib/supabase';
 import DisclaimerModal from '@/components/DisclaimerModal';
 
 // SweetAlert2 import — 'use client' guarantees browser-only execution, no SSR conflict
@@ -216,13 +217,45 @@ export default function OrderPage() {
     loadActiveOrders();
   }, [ready, session]);
 
-  // ── Auto-poll active orders every 15s (was 5s — reduced to prevent DB overload) ──
+  // ── Auto-poll active orders (DINONAKTIFKAN — kode disimpan jika sewaktu-waktu ingin dipakai) ──
+  /*
   useEffect(() => {
     const hasPending = activeOrders.some(o => ['waiting', 'expiring'].includes(o.status));
     if (!hasPending) return;
     const interval = setInterval(loadActiveOrders, 15000);
     return () => clearInterval(interval);
   }, [activeOrders]);
+  */
+
+  // ── Supabase Realtime: tangkap perubahan status/OTP secara instan tanpa polling ──
+  useEffect(() => {
+    const userId = profile?.id || session?.user?.id;
+    if (!userId) return;
+
+    const channel = supabase
+      .channel(`active-orders-${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'orders',
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          if (payload.new) {
+            setActiveOrders(prev =>
+              prev.map(o => (o.order_id === payload.new.order_id ? { ...o, ...payload.new } : o))
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [profile?.id, session?.user?.id]);
 
   // ── Auto-cancel expired orders ────────────────────────────────────
   const autoCancel = useCallback(async (orderId) => {
@@ -617,7 +650,25 @@ export default function OrderPage() {
                   return (
                     <div key={order.id} className="card">
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                        <div className="card-title">📱 Order Aktif</div>
+                        <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span>📱 Order Aktif</span>
+                          <button
+                            type="button"
+                            onClick={() => loadActiveOrders()}
+                            title="Segarkan status"
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: 'var(--text-3)',
+                              cursor: 'pointer',
+                              fontSize: '0.85rem',
+                              padding: '2px 6px',
+                              borderRadius: 4,
+                            }}
+                          >
+                            🔄
+                          </button>
+                        </div>
                         <span style={{ fontFamily: 'var(--mono)', color: 'var(--yellow)', fontSize: '0.8rem' }}>
                           {order.status?.toUpperCase() || 'WAITING'}
                         </span>
@@ -670,6 +721,37 @@ export default function OrderPage() {
                                   ⏱ {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
                                 </div>
                                 <div style={{ color: 'var(--text-3)', fontSize: '0.75rem', marginTop: 4 }}>Waktu tersisa</div>
+
+                                {/* ── Peringatan Khusus Layanan Telegram ── */}
+                                {(() => {
+                                  const svc = (order.service || order.service_name || '').toLowerCase();
+                                  const isTg = svc.includes('telegram') || svc === 'tg';
+                                  if (!isTg) return null;
+                                  return (
+                                    <div style={{
+                                      marginTop: 14,
+                                      background: 'rgba(234, 179, 8, 0.08)',
+                                      border: '1px solid rgba(234, 179, 8, 0.35)',
+                                      borderRadius: 'var(--radius-sm, 8px)',
+                                      padding: '12px 14px',
+                                      textAlign: 'left',
+                                      fontSize: '0.8rem',
+                                      lineHeight: 1.55,
+                                      color: 'var(--text-2, #cbd5e1)',
+                                    }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, color: '#eab308', marginBottom: 6, fontSize: '0.82rem' }}>
+                                        <span>⚠️</span>
+                                        <span>Peringatan Khusus Telegram</span>
+                                      </div>
+                                      <div style={{ marginBottom: 8, color: 'var(--text-1, #f8fafc)' }}>
+                                        Pendaftaran Telegram hanya dapat dilakukan melalui <strong>aplikasi telegram original di mobile</strong>. Jika Anda mendaftar melalui versi web atau aplikasi pihak ketiga (tidak resmi), kode verifikasi tidak akan diterima.
+                                      </div>
+                                      <div style={{ color: 'var(--text-2, #cbd5e1)' }}>
+                                        Kami juga menyarankan penggunaan <strong>VPN atau proxy</strong> dengan alamat IP dari negara tempat Anda melakukan pembelian.
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
                               </>
                             )}
                           </>
