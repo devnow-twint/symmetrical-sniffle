@@ -216,11 +216,11 @@ export default function OrderPage() {
     loadActiveOrders();
   }, [ready, session]);
 
-  // ── Auto-poll active orders every 5s ──────────────────────────────
+  // ── Auto-poll active orders every 15s (was 5s — reduced to prevent DB overload) ──
   useEffect(() => {
     const hasPending = activeOrders.some(o => ['waiting', 'expiring'].includes(o.status));
     if (!hasPending) return;
-    const interval = setInterval(loadActiveOrders, 5000);
+    const interval = setInterval(loadActiveOrders, 15000);
     return () => clearInterval(interval);
   }, [activeOrders]);
 
@@ -635,6 +635,24 @@ export default function OrderPage() {
                             <div className="alert alert-success" style={{ marginTop: 12, display: 'inline-block' }}>
                               ✅ OTP Berhasil!
                             </div>
+                            {/* Kotak isi SMS lengkap — muncul kalau ada otp_text dari webhook */}
+                            {order.otp_text && (
+                              <div style={{
+                                marginTop: 14,
+                                background: 'var(--bg-2)',
+                                border: '1px solid var(--border)',
+                                borderRadius: 'var(--radius-sm)',
+                                padding: '10px 14px',
+                                textAlign: 'left',
+                              }}>
+                                <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
+                                  📩 Isi SMS
+                                </div>
+                                <div style={{ fontSize: '0.85rem', color: 'var(--text-1)', lineHeight: 1.6, wordBreak: 'break-word', fontFamily: 'var(--mono)' }}>
+                                  {order.otp_text}
+                                </div>
+                              </div>
+                            )}
                           </>
                         ) : (
                           <>

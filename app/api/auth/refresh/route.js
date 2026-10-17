@@ -1,6 +1,18 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+// Singleton anon client for auth refresh — avoids creating a new client per request
+let _anonClient = null;
+function getAnonClient() {
+  if (!_anonClient) {
+    _anonClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    );
+  }
+  return _anonClient;
+}
+
 export async function POST(request) {
   try {
     const { refresh_token } = await request.json();
@@ -9,10 +21,7 @@ export async function POST(request) {
       return NextResponse.json({ error: 'refresh_token wajib diisi' }, { status: 400 });
     }
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    );
+    const supabase = getAnonClient();
 
     const { data, error } = await supabase.auth.refreshSession({ refresh_token });
 

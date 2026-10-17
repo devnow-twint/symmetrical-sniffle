@@ -18,18 +18,17 @@ export async function GET(request) {
 
     const supabase = getServiceSupabase();
 
-    // Verify the order belongs to this user + fetch price for potential refund
+    // Single query — ambil semua field sekaligus (user_id, server, price, status)
+    // Sebelumnya 2 query terpisah → sekarang 1 query, hemat 1 DB round-trip per polling
     const { data: orderRow } = await supabase
-      .from('orders').select('user_id, server, price').eq('order_id', order_id).single();
+      .from('orders').select('user_id, server, price, status').eq('order_id', order_id).single();
     if (!orderRow || orderRow.user_id !== user.id) {
       return NextResponse.json({ error: 'Order tidak ditemukan' }, { status: 404 });
     }
 
-    // Check current order status FIRST — don't poll for canceled/completed orders
-    const { data: currentOrder } = await supabase
-      .from('orders').select('status').eq('order_id', order_id).single();
-
-    if (!currentOrder || !['waiting', 'expiring'].includes(currentOrder.status)) {
+    // Cek status dari data yang sudah diambil — jangan poll provider kalau sudah final
+    const currentOrder = { status: orderRow.status };
+    if (!['waiting', 'expiring'].includes(orderRow.status)) {
       // Order already finalized (canceled/completed/received) — skip provider poll
       return NextResponse.json({ success: true, data: currentOrder });
     }

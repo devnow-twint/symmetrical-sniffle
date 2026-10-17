@@ -5,3 +5,12 @@
 node_modules/
 qris-dinamis-generator/node_modules/
 supabase/
+
+backup_*/
+test-webhook.js
+create-test-order.js
+ui-test-order.js
+cleanup-test-order.js
+.test-order-id
+
+backup_db.js

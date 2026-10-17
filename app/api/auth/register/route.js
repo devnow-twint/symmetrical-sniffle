@@ -26,12 +26,9 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Username sudah terpakai' }, { status: 400 });
     }
 
-    // Cek email duplikat
-    const { data: existingAuthUsers } = await supabaseAdmin.auth.admin.listUsers();
-    const emailAlreadyExists = existingAuthUsers?.users?.some(
-      (u) => u.email?.toLowerCase() === email.toLowerCase()
-    );
-    if (emailAlreadyExists) {
+    // Cek email duplikat — gunakan getUserByEmail (O(1)) bukan listUsers() (O(n) fetch semua user)
+    const { data: existingByEmail } = await supabaseAdmin.auth.admin.getUserByEmail(email);
+    if (existingByEmail?.user) {
       return NextResponse.json({ error: 'Email sudah terdaftar' }, { status: 400 });
     }
 
