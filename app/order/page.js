@@ -201,6 +201,7 @@ export default function OrderPage() {
 
   // Active orders state
   const [activeOrders, setActiveOrders] = useState([]);
+  const [refreshingOrders, setRefreshingOrders] = useState(false);
   const [actionLoading, setActionLoading] = useState(null);
   const cancellingRef = useRef(new Set());
   const [now, setNow] = useState(Date.now());
@@ -296,6 +297,7 @@ export default function OrderPage() {
   }, [activeOrders, autoCancel]);
 
   const loadActiveOrders = async () => {
+    setRefreshingOrders(true);
     try {
       const res = await fetch(`/api/orders/history?page=1`, { headers: getFreshHeaders() });
       const json = await res.json();
@@ -323,6 +325,9 @@ export default function OrderPage() {
         setActiveOrders(stillActive);
       }
     } catch { }
+    finally {
+      setRefreshingOrders(false);
+    }
   };
 
   // ── SMS Bower Flow: Negara → Layanan → Harga ────────────────────────────────
@@ -650,23 +655,51 @@ export default function OrderPage() {
                   return (
                     <div key={order.id} className="card">
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                        <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                           <span>📱 Order Aktif</span>
                           <button
                             type="button"
                             onClick={() => loadActiveOrders()}
-                            title="Segarkan status"
+                            disabled={refreshingOrders}
+                            title="Cek dan segarkan status OTP"
                             style={{
-                              background: 'transparent',
-                              border: 'none',
-                              color: 'var(--text-3)',
-                              cursor: 'pointer',
-                              fontSize: '0.85rem',
-                              padding: '2px 6px',
-                              borderRadius: 4,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              padding: '4px 10px',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              borderRadius: 'var(--radius-sm, 6px)',
+                              background: 'var(--bg-2)',
+                              border: '1px solid var(--border)',
+                              color: 'var(--text-2)',
+                              cursor: refreshingOrders ? 'not-allowed' : 'pointer',
+                              transition: 'all var(--transition, 0.15s ease)',
+                            }}
+                            onMouseEnter={e => {
+                              if (!refreshingOrders) {
+                                e.currentTarget.style.borderColor = 'var(--accent)';
+                                e.currentTarget.style.color = 'var(--accent)';
+                              }
+                            }}
+                            onMouseLeave={e => {
+                              if (!refreshingOrders) {
+                                e.currentTarget.style.borderColor = 'var(--border)';
+                                e.currentTarget.style.color = 'var(--text-2)';
+                              }
                             }}
                           >
-                            🔄
+                            <span
+                              style={{
+                                display: 'inline-block',
+                                fontSize: '0.8rem',
+                                lineHeight: 1,
+                                animation: refreshingOrders ? 'spin 1s linear infinite' : 'none',
+                              }}
+                            >
+                              🔄
+                            </span>
+                            <span>{refreshingOrders ? 'Memeriksa...' : 'Cek Status'}</span>
                           </button>
                         </div>
                         <span style={{ fontFamily: 'var(--mono)', color: 'var(--yellow)', fontSize: '0.8rem' }}>
@@ -721,6 +754,35 @@ export default function OrderPage() {
                                   ⏱ {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
                                 </div>
                                 <div style={{ color: 'var(--text-3)', fontSize: '0.75rem', marginTop: 4 }}>Waktu tersisa</div>
+
+                                {/* ── Catatan / Panduan OTP ── */}
+                                <div style={{
+                                  marginTop: 14,
+                                  background: 'var(--bg-2)',
+                                  border: '1px solid var(--border)',
+                                  borderRadius: 'var(--radius-sm)',
+                                  padding: '12px 14px',
+                                  textAlign: 'left',
+                                  fontSize: '0.78rem',
+                                  lineHeight: 1.6,
+                                  color: 'var(--text-2)',
+                                }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, color: 'var(--text-1)', marginBottom: 8, fontSize: '0.82rem' }}>
+                                    <span>💡</span>
+                                    <span>Catatan Penting</span>
+                                  </div>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    <div>
+                                      • Pastikan permintaan OTP dikirim melalui <strong>SMS</strong> di aplikasi tujuan.
+                                    </div>
+                                    <div style={{ color: 'var(--text-1)' }}>
+                                      • <strong>Perlu diketahui, OTP tidak bisa bertahan lama. Hanya 5 - 10 menit setelah diterimanya OTP.</strong>
+                                    </div>
+                                    <div>
+                                      • Anda bisa klik tombol <strong>"Cek Status"</strong> di atas jika kode belum muncul. Apabila dalam <strong>5 - 10 menit</strong> OTP tetap tidak masuk, pesanan bisa dibatalkan dan silakan beli nomor baru.
+                                    </div>
+                                  </div>
+                                </div>
 
                                 {/* ── Peringatan Khusus Layanan Telegram ── */}
                                 {(() => {
