@@ -201,6 +201,8 @@ export default function OrderPage() {
 
   // Active orders state
   const [activeOrders, setActiveOrders] = useState([]);
+  const activeOrdersRef = useRef(activeOrders);
+  useEffect(() => { activeOrdersRef.current = activeOrders; }, [activeOrders]);
   const [refreshingOrders, setRefreshingOrders] = useState(false);
   const [actionLoading, setActionLoading] = useState(null);
   const cancellingRef = useRef(new Set());
@@ -218,15 +220,68 @@ export default function OrderPage() {
     loadActiveOrders();
   }, [ready, session]);
 
-  // ── Auto-poll active orders (DINONAKTIFKAN — kode disimpan jika sewaktu-waktu ingin dipakai) ──
-  /*
+  // ── Smart Auto-poll: cek provider tiap 10 detik HANYA saat ada order pending ──
+  // Fallback hemat DB saat webhook provider delay/terlewat.
+  const isPendingOrder = (o) => ['waiting', 'expiring'].includes(o.status) && !isRealOtp(o.otp_code);
+  const hasPendingOrders = activeOrders.some(isPendingOrder);
+
   useEffect(() => {
-    const hasPending = activeOrders.some(o => ['waiting', 'expiring'].includes(o.status));
-    if (!hasPending) return;
-    const interval = setInterval(loadActiveOrders, 15000);
+    if (!hasPendingOrders) return;
+
+    const interval = setInterval(async () => {
+      const currentOrders = activeOrdersRef.current;
+      const pending = currentOrders.filter(
+        o => isPendingOrder(o) && !cancellingRef.current.has(o.order_id)
+      );
+      if (pending.length === 0) return;
+
+      // Panggil endpoint status langsung per order — tanpa query history (sangat hemat beban DB)
+      const updates = await Promise.all(
+        pending.map(async (o) => {
+          try {
+            const res = await fetch(`/api/orders/status?order_id=${o.order_id}`, { headers: getFreshHeaders() });
+            const json = await res.json();
+            if (json.success && json.data) {
+              return { order_id: o.order_id, data: json.data };
+            }
+          } catch { }
+          return null;
+        })
+      );
+
+      const validUpdates = updates.filter(Boolean);
+      if (validUpdates.length > 0) {
+        let hasRefund = false;
+        setActiveOrders(prev => {
+          let changed = false;
+          const next = prev
+            .map(o => {
+              const u = validUpdates.find(up => up.order_id === o.order_id);
+              if (u) {
+                if (u.data.status === 'canceled') {
+                  hasRefund = true;
+                  changed = true;
+                  return null;
+                }
+                if (u.data.status !== o.status || u.data.otp_code !== o.otp_code) {
+                  changed = true;
+                  return { ...o, ...u.data };
+                }
+              }
+              return o;
+            })
+            .filter(Boolean);
+          return changed ? next : prev;
+        });
+
+        if (hasRefund) {
+          refreshProfile();
+        }
+      }
+    }, 10000);
+
     return () => clearInterval(interval);
-  }, [activeOrders]);
-  */
+  }, [hasPendingOrders]);
 
   // ── Supabase Realtime: tangkap perubahan status/OTP secara instan tanpa polling ──
   useEffect(() => {

@@ -21,7 +21,7 @@ export async function GET(request) {
     // Single query — ambil semua field sekaligus (user_id, server, price, status)
     // Sebelumnya 2 query terpisah → sekarang 1 query, hemat 1 DB round-trip per polling
     const { data: orderRow } = await supabase
-      .from('orders').select('user_id, server, price, status').eq('order_id', order_id).single();
+      .from('orders').select('user_id, server, price, status, otp_code').eq('order_id', order_id).single();
     if (!orderRow || orderRow.user_id !== user.id) {
       return NextResponse.json({ error: 'Order tidak ditemukan' }, { status: 404 });
     }
@@ -104,11 +104,14 @@ export async function GET(request) {
         }
 
       } else {
-        // Masih menunggu OTP
-        await supabase.from('orders')
-          .update({ otp_code: null, status: 'waiting' })
-          .eq('order_id', order_id)
-          .in('status', ['waiting', 'expiring']);
+        // Masih menunggu OTP — HANYA update DB jika status/otp_code berubah
+        // Mencegah redundant write DB & broadcast Realtime berulang setiap polling (sangat menghemat Supabase compute/WAL)
+        if (orderRow.status !== 'waiting' || (orderRow.otp_code && orderRow.otp_code !== '-')) {
+          await supabase.from('orders')
+            .update({ otp_code: null, status: 'waiting' })
+            .eq('order_id', order_id)
+            .in('status', ['waiting', 'expiring']);
+        }
       }
     }
 

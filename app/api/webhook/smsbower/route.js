@@ -31,7 +31,9 @@ export async function POST(request) {
     const isDev = process.env.NODE_ENV === 'development';
     if (!isDev) {
       const forwarded = request.headers.get('x-forwarded-for') || '';
-      const clientIp  = forwarded.split(',')[0].trim();
+      const clientIp  = request.headers.get('cf-connecting-ip')
+        || request.headers.get('x-real-ip')
+        || forwarded.split(',')[0].trim();
 
       if (ALLOWED_IPS.length > 0 && !ALLOWED_IPS.includes(clientIp)) {
         console.warn(`[webhook/smsbower] Rejected IP: ${clientIp}`);
