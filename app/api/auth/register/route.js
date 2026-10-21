@@ -26,12 +26,6 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Username sudah terpakai' }, { status: 400 });
     }
 
-    // Cek email duplikat — gunakan getUserByEmail (O(1)) bukan listUsers() (O(n) fetch semua user)
-    const { data: existingByEmail } = await supabaseAdmin.auth.admin.getUserByEmail(email);
-    if (existingByEmail?.user) {
-      return NextResponse.json({ error: 'Email sudah terdaftar' }, { status: 400 });
-    }
-
     // Gunakan admin.createUser agar user langsung confirmed (tidak perlu verifikasi email)
     const { data, error } = await supabaseAdmin.auth.admin.createUser({
       email,
@@ -41,6 +35,9 @@ export async function POST(request) {
     });
 
     if (error) {
+      if (error.code === 'email_exists' || error.message?.toLowerCase().includes('already registered')) {
+        return NextResponse.json({ error: 'Email sudah terdaftar' }, { status: 400 });
+      }
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
