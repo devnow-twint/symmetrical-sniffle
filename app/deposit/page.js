@@ -29,10 +29,16 @@ export default function DepositPage() {
   }, [ready, session]);
 
   useEffect(() => {
-    // Cek status deposit terbuka/tutup dari server
-    fetch('/api/deposit-status')
+    // Cek status deposit terbuka/tutup dari server (no-cache agar selalu real-time dari DB)
+    fetch('/api/deposit-status', { cache: 'no-store' })
       .then(r => r.json())
-      .then(d => setDepositOpen(d?.data?.deposit_open !== false))
+      .then(d => {
+        if (d?.success && d?.data) {
+          setDepositOpen(d.data.deposit_open === true);
+        } else {
+          setDepositOpen(true);
+        }
+      })
       .catch(() => setDepositOpen(true))
       .finally(() => setStatusLoading(false));
   }, []);

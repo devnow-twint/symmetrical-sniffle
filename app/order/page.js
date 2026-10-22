@@ -283,7 +283,9 @@ export default function OrderPage() {
     return () => clearInterval(interval);
   }, [hasPendingOrders]);
 
-  // ── Supabase Realtime: tangkap perubahan status/OTP secara instan tanpa polling ──
+  // ── Supabase Realtime: DINONAKTIFKAN (penyebab replication slot stuck 44m dan ratusan error di Postgres) ──
+  // Status dan OTP sepenuhnya ditangani oleh Smart Auto-poll 10s & SMS Bower Webhook.
+  /*
   useEffect(() => {
     const userId = profile?.id || session?.user?.id;
     if (!userId) return;
@@ -312,6 +314,7 @@ export default function OrderPage() {
       supabase.removeChannel(channel);
     };
   }, [profile?.id, session?.user?.id]);
+  */
 
   // ── Auto-cancel expired orders ────────────────────────────────────
   const autoCancel = useCallback(async (orderId) => {
