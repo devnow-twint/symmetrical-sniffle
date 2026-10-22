@@ -220,7 +220,7 @@ export default function OrderPage() {
     loadActiveOrders();
   }, [ready, session]);
 
-  // ── Smart Auto-poll: cek provider tiap 5 detik HANYA saat ada order pending ──
+  // ── Smart Auto-poll: cek provider tiap 10 detik HANYA saat ada order pending ──
   // Fallback hemat DB saat webhook provider delay/terlewat.
   const isPendingOrder = (o) => ['waiting', 'expiring'].includes(o.status) && !isRealOtp(o.otp_code);
   const hasPendingOrders = activeOrders.some(isPendingOrder);
@@ -278,7 +278,7 @@ export default function OrderPage() {
           refreshProfile();
         }
       }
-    }, 5000);
+    }, 10000);
 
     return () => clearInterval(interval);
   }, [hasPendingOrders]);
