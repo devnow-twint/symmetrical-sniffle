@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabase';
 import { getAuthUser } from '@/lib/auth';
-import { cancelOrder, doneOrder } from '@/lib/otpProvider';
+import { cancelOrder, doneOrder, getOrderStatus } from '@/lib/otpProvider';
 
 export async function POST(request) {
   try {
@@ -37,7 +37,7 @@ export async function POST(request) {
         return NextResponse.json({ success: false, error: 'Pesanan sudah dibatalkan atau diselesaikan sebelumnya.' }, { status: 400 });
       }
       // Notify SMS Bower that activation is confirmed (status=6)
-      try { await doneOrder(order_id); } catch {}
+      try { await doneOrder(order_id); } catch { }
       const { data: completedOrder } = await supabase.from('orders')
         .update({ status: 'completed' })
         .eq('order_id', order_id)
@@ -52,13 +52,60 @@ export async function POST(request) {
 
     // ── Cancel flow ──────────────────────────────────────────────────────
     if (status === 'cancel') {
+      const isRealOtp = (code) => {
+        if (!code || code === '-') return false;
+        const placeholders = ['menunggu', 'waiting', 'pending'];
+        return !placeholders.includes(String(code).trim().toLowerCase());
+      };
+
+      // 1. Cek apakah di DB sudah ada OTP valid
+      if (isRealOtp(order.otp_code) || order.status === 'completed') {
+        return NextResponse.json({
+          success: false,
+          has_otp: true,
+          otp_code: order.otp_code,
+          status: order.status || 'received',
+          error: 'Kode OTP sudah masuk! Pesanan tidak dapat dibatalkan.',
+        }, { status: 400 });
+      }
+
+      // 2. CEK STATUS KE PROVIDER TERLEBIH DAHULU SEBELUM CANCEL
+      // Memastikan jika OTP baru saja masuk di provider, kita ambil kodenya dan jangan batalkan
+      try {
+        const orderServer = order.server || 'smsbower';
+        const provStatus = await getOrderStatus(order_id, orderServer);
+        if (provStatus.success && provStatus.data) {
+          const provOtp = provStatus.data.otp_code;
+          if (provStatus.data.status === 'received' && isRealOtp(provOtp)) {
+            // OTP sudah masuk di provider! Simpan ke DB & batalkan proses cancel
+            await supabase.from('orders')
+              .update({ otp_code: provOtp, status: 'received' })
+              .eq('order_id', order_id);
+
+            console.log(`[cancel] order=${order_id} OTP found during pre-cancel check: ${provOtp}`);
+            return NextResponse.json({
+              success: false,
+              has_otp: true,
+              otp_code: provOtp,
+              status: 'received',
+              error: 'Kode OTP sudah masuk! Pesanan tidak dapat dibatalkan.',
+            }, { status: 400 });
+          }
+        }
+      } catch (checkErr) {
+        console.warn(`[cancel] check status before cancel failed for ${order_id}:`, checkErr.message);
+      }
+
       // Cek apakah status 'received' tapi OTP kosong/tanda '-' (OTP gagal diterima)
       const otpIsEmpty = !order.otp_code || order.otp_code === '-' || order.otp_code.trim() === '';
       const isReceivedButEmpty = order.status === 'received' && otpIsEmpty;
 
-      // Jangan bisa cancel kalau sudah selesai/received (dengan OTP valid)/canceled
+      // Jangan bisa cancel kalau sudah selesai/canceled
       if (!['waiting', 'expiring'].includes(order.status) && !isReceivedButEmpty) {
-        return NextResponse.json({ success: false, error: 'Order ini sudah selesai atau menerima OTP, tidak dapat dibatalkan.' }, { status: 400 });
+        return NextResponse.json({
+          success: false,
+          error: 'Order ini sudah selesai atau dibatalkan sebelumnya.',
+        }, { status: 400 });
       }
 
       const now = Date.now();
@@ -77,8 +124,8 @@ export async function POST(request) {
       // EARLY_CANCEL_DENIED: SMS Bower sends this if < 2 min since order
       const isEarlyCancel = !data.success && data.message &&
         (data.message.toLowerCase().includes('belum bisa') ||
-         data.message.toLowerCase().includes('early_cancel') ||
-         data.message.toLowerCase().includes('2 menit'));
+          data.message.toLowerCase().includes('early_cancel') ||
+          data.message.toLowerCase().includes('2 menit'));
 
       if (isEarlyCancel) {
         return NextResponse.json({ success: false, error: data.message || 'Pesanan belum bisa dibatalkan.' }, { status: 400 });
@@ -86,10 +133,10 @@ export async function POST(request) {
 
       const isAlreadyCanceled = !data.success && data.message &&
         (data.message.toLowerCase().includes('tidak ditemukan') ||
-         data.message.toLowerCase().includes('no_activation') ||
-         data.message.toLowerCase().includes('not found') ||
-         data.message.toLowerCase().includes('canceled') ||
-         data.message.toLowerCase().includes('expired'));
+          data.message.toLowerCase().includes('no_activation') ||
+          data.message.toLowerCase().includes('not found') ||
+          data.message.toLowerCase().includes('canceled') ||
+          data.message.toLowerCase().includes('expired'));
 
       if (data.success || isAlreadyCanceled) {
         return await doRefund({
@@ -107,6 +154,26 @@ export async function POST(request) {
           reason: 'received_invalid_otp',
           providerMessage: data.message,
         });
+      }
+
+      // Jika cancel gagal di provider, cek lagi apakah penyebabnya karena OTP baru saja masuk
+      if (!isEarlyCancel && !isAlreadyCanceled) {
+        try {
+          const provCheck = await getOrderStatus(order_id, order.server || 'smsbower');
+          if (provCheck.success && provCheck.data?.status === 'received' && isRealOtp(provCheck.data?.otp_code)) {
+            await supabase.from('orders')
+              .update({ otp_code: provCheck.data.otp_code, status: 'received' })
+              .eq('order_id', order_id);
+
+            return NextResponse.json({
+              success: false,
+              has_otp: true,
+              otp_code: provCheck.data.otp_code,
+              status: 'received',
+              error: 'Kode OTP sudah masuk! Pesanan tidak dapat dibatalkan.',
+            }, { status: 400 });
+          }
+        } catch {}
       }
 
       console.warn(`[cancel] FAILED order=${order_id} provider_message=${data.message}`);

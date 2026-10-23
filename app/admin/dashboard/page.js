@@ -76,6 +76,16 @@ export default function AdminDashboardPage() {
   const [smtpCount, setSmtpCount] = useState(0);
   const [smtpSaving, setSmtpSaving] = useState(false);
   const [smtpMsg, setSmtpMsg] = useState('');
+  const [blacklistedIds, setBlacklistedIds] = useState([]);
+  const [blackInput, setBlackInput] = useState('');
+  const [blackSaving, setBlackSaving] = useState(false);
+  const [blackMsg, setBlackMsg] = useState('');
+  const [inspectCountry, setInspectCountry] = useState('6');
+  const [inspectService, setInspectService] = useState('wa');
+  const [inspectList, setInspectList] = useState(null);
+  const [inspectLoading, setInspectLoading] = useState(false);
+  const [inspectMsg, setInspectMsg] = useState('');
+  const [showInspector, setShowInspector] = useState(false);
 
   useEffect(() => {
     if (!ready) return;
@@ -88,18 +98,20 @@ export default function AdminDashboardPage() {
     setLoading(true);
     const headers = { Authorization: `Bearer ${token}` };
     try {
-      const [statsRes, balRes, settingsRes, ratesRes, smtpRes] = await Promise.all([
+      const [statsRes, balRes, settingsRes, ratesRes, smtpRes, blackRes] = await Promise.all([
         fetch('/api/admin/stats', { headers }),
         fetch('/api/admin/balance', { headers }),
         fetch('/api/admin/settings', { headers }),
         fetch('/api/admin/rates', { headers }),
         fetch('/api/admin/smtp-accounts', { headers }),
+        fetch('/api/admin/blacklist', { headers }),
       ]);
       const sd  = await statsRes.json();
       const bd  = await balRes.json();
       const stg = await settingsRes.json();
       const rt  = await ratesRes.json();
       const smtp = await smtpRes.json();
+      const bl  = await blackRes.json();
       if (sd.success)  setStats(sd.data);
       if (bd.success)  setProviderBalance(bd.data);
       if (stg.success) {
@@ -114,6 +126,7 @@ export default function AdminDashboardPage() {
         setRatesInput({ usd_to_idr: String(rt.data.usd_to_idr), otp_price_markup: String(rt.data.otp_price_markup) });
       }
       if (smtp.success) setSmtpCount(smtp.data?.count || 0);
+      if (bl.success && Array.isArray(bl.data)) setBlacklistedIds(bl.data);
     } catch {}
     setLoading(false);
   };
@@ -183,6 +196,108 @@ export default function AdminDashboardPage() {
       }
     } catch { setSmtpMsg('❌ Kesalahan jaringan'); }
     setSmtpSaving(false);
+  };
+
+  const handleAddBlacklist = async (idToAdd) => {
+    if (!session || blackSaving) return;
+    const val = (idToAdd || blackInput).trim();
+    if (!val) return;
+    setBlackSaving(true); setBlackMsg('');
+    try {
+      const res = await fetch('/api/admin/blacklist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ action: 'add', id: val }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        setBlacklistedIds(d.data || []);
+        setBlackInput('');
+        setBlackMsg('✅ ' + (d.message || 'ID berhasil diblacklist'));
+        if (inspectList) {
+          setInspectList(prev => prev?.map(item => d.data.includes(String(item.provider_id)) ? { ...item, is_blacklisted: true } : item));
+        }
+      } else {
+        setBlackMsg('❌ ' + (d.error || 'Gagal menambahkan blacklist'));
+      }
+    } catch {
+      setBlackMsg('❌ Terjadi kesalahan jaringan');
+    }
+    setBlackSaving(false);
+  };
+
+  const handleRemoveBlacklist = async (idToRemove) => {
+    if (!session || blackSaving) return;
+    setBlackSaving(true); setBlackMsg('');
+    try {
+      const res = await fetch('/api/admin/blacklist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ action: 'remove', id: idToRemove }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        setBlacklistedIds(d.data || []);
+        setBlackMsg('✅ ' + (d.message || `ID ${idToRemove} dihapus dari blacklist`));
+        if (inspectList) {
+          setInspectList(prev => prev?.map(item => String(item.provider_id) === String(idToRemove) ? { ...item, is_blacklisted: false } : item));
+        }
+      } else {
+        setBlackMsg('❌ ' + (d.error || 'Gagal menghapus'));
+      }
+    } catch {
+      setBlackMsg('❌ Terjadi kesalahan jaringan');
+    }
+    setBlackSaving(false);
+  };
+
+  const handleClearAllBlacklist = async () => {
+    if (!session || blackSaving) return;
+    if (!confirm('Apakah kamu yakin ingin menghapus SEMUA blacklist Provider ID?')) return;
+    setBlackSaving(true); setBlackMsg('');
+    try {
+      const res = await fetch('/api/admin/blacklist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ action: 'clear' }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        setBlacklistedIds([]);
+        setBlackMsg('✅ Semua blacklist telah dibersihkan');
+        if (inspectList) {
+          setInspectList(prev => prev?.map(item => ({ ...item, is_blacklisted: false })));
+        }
+      }
+    } catch {
+      setBlackMsg('❌ Terjadi kesalahan jaringan');
+    }
+    setBlackSaving(false);
+  };
+
+  const handleInspectProviders = async () => {
+    if (!session || inspectLoading) return;
+    const ctry = inspectCountry.trim();
+    const svc = inspectService.trim();
+    if (!ctry || !svc) return;
+    setInspectLoading(true); setInspectMsg(''); setInspectList(null);
+    try {
+      const res = await fetch(`/api/admin/blacklist?inspect=1&country=${encodeURIComponent(ctry)}&service=${encodeURIComponent(svc)}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const d = await res.json();
+      if (d.success && Array.isArray(d.data)) {
+        setInspectList(d.data);
+        if (d.data.length === 0) {
+          setInspectMsg('Tidak ada provider ditemukan untuk kombinasi ini.');
+        }
+      } else {
+        setInspectMsg('❌ ' + (d.error || 'Gagal memuat provider dari SMS Bower'));
+      }
+    } catch {
+      setInspectMsg('❌ Gagal terhubung ke API');
+    }
+    setInspectLoading(false);
   };
 
   if (!ready || !session) {
@@ -405,6 +520,257 @@ export default function AdminDashboardPage() {
                 ? <><span className="spinner" style={{ width: 13, height: 13, borderColor: '#fff', borderTopColor: 'transparent' }} /> Menyimpan...</>
                 : '💾 Simpan Kurs'}
             </button>
+          </div>
+
+          {/* Blacklist Provider ID Setting */}
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+              <div className="card-title" style={{ fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
+                <span>🚫</span> Blacklist Provider ID (SMS Bower)
+              </div>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-3)' }}>
+                Total terblokir: <strong style={{ color: blacklistedIds.length > 0 ? '#e63946' : 'var(--text-1)', fontFamily: 'var(--mono)' }}>{blacklistedIds.length}</strong>
+              </span>
+            </div>
+
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-2)', marginBottom: 14, lineHeight: 1.6 }}>
+              Provider ID yang dimasukkan ke daftar blacklist <strong>tidak akan muncul</strong> pada daftar pilihan harga order dan tidak akan dipilih oleh sistem saat pemesanan nomor.
+            </div>
+
+            {/* Input manual provider ID */}
+            <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+              <input
+                type="text"
+                value={blackInput}
+                onChange={e => setBlackInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleAddBlacklist(); }}
+                placeholder="Masukkan Provider ID (contoh: 3178 atau pisahkan koma: 3178, 1024)"
+                style={{
+                  flex: 1, minWidth: 260, background: 'var(--bg-2)', border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)', padding: '9px 12px',
+                  color: 'var(--text-1)', fontFamily: 'var(--mono)', fontSize: '0.88rem',
+                }}
+              />
+              <button
+                onClick={() => handleAddBlacklist()}
+                disabled={blackSaving || !blackInput.trim()}
+                style={{
+                  padding: '9px 20px', borderRadius: 'var(--radius-sm)',
+                  background: '#e63946', border: 'none', color: '#fff',
+                  fontWeight: 700, fontSize: '0.85rem', cursor: (blackSaving || !blackInput.trim()) ? 'not-allowed' : 'pointer',
+                  opacity: (blackSaving || !blackInput.trim()) ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 6,
+                }}
+              >
+                {blackSaving ? 'Menyimpan...' : '➕ Blacklist ID'}
+              </button>
+            </div>
+
+            {blackMsg && (
+              <div style={{
+                fontSize: '0.82rem', padding: '8px 12px', borderRadius: 'var(--radius-sm)',
+                background: blackMsg.startsWith('✅') ? 'rgba(0,200,150,0.1)' : 'rgba(230,57,70,0.1)',
+                color: blackMsg.startsWith('✅') ? 'var(--green)' : '#e63946',
+                marginBottom: 14,
+              }}>{blackMsg}</div>
+            )}
+
+            {/* Daftar Badges / Chips ID Terblokir */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-3)', marginBottom: 8, fontWeight: 500 }}>
+                Daftar Provider ID yang Diblokir:
+              </div>
+              {blacklistedIds.length === 0 ? (
+                <div style={{ padding: '12px 14px', background: 'var(--bg-2)', borderRadius: 'var(--radius-sm)', color: 'var(--text-3)', fontSize: '0.82rem' }}>
+                  Belum ada Provider ID yang diblacklist.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                  {blacklistedIds.map(id => (
+                    <span
+                      key={id}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        background: 'rgba(230,57,70,0.12)', border: '1px solid rgba(230,57,70,0.3)',
+                        borderRadius: 20, padding: '4px 12px', fontSize: '0.82rem',
+                        fontFamily: 'var(--mono)', color: '#e63946', fontWeight: 600,
+                      }}
+                    >
+                      <span>🚫 {id}</span>
+                      <button
+                        onClick={() => handleRemoveBlacklist(id)}
+                        title={`Hapus ID ${id} dari blacklist`}
+                        style={{
+                          background: 'transparent', border: 'none', color: '#e63946',
+                          cursor: 'pointer', padding: 0, marginLeft: 2, fontSize: '0.95rem',
+                          lineHeight: 1, display: 'flex', alignItems: 'center',
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ))}
+                  <button
+                    onClick={handleClearAllBlacklist}
+                    style={{
+                      background: 'transparent', border: '1px dashed var(--border)',
+                      borderRadius: 20, padding: '4px 12px', fontSize: '0.75rem',
+                      color: 'var(--text-3)', cursor: 'pointer', marginLeft: 4,
+                    }}
+                  >
+                    🗑 Hapus Semua
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Tool Inspeksi Provider ID per Layanan */}
+            <div style={{
+              borderTop: '1px solid var(--border)', paddingTop: 14, marginTop: 14,
+            }}>
+              <div
+                onClick={() => setShowInspector(v => !v)}
+                style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  cursor: 'pointer', userSelect: 'none',
+                }}
+              >
+                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-1)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span>🔍</span> Cek & Temukan Provider ID dari SMS Bower {showInspector ? '▲' : '▼'}
+                </div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--accent)' }}>
+                  {showInspector ? 'Tutup' : 'Buka Inspector'}
+                </span>
+              </div>
+
+              {showInspector && (
+                <div style={{ marginTop: 14, background: 'var(--bg-2)', borderRadius: 'var(--radius-sm)', padding: 14, border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-3)', marginBottom: 12 }}>
+                    Cari daftar provider untuk negara & layanan tertentu untuk melihat ID, stok, dan harga terkini secara langsung.
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 10, alignItems: 'flex-end', marginBottom: 12 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-3)', marginBottom: 4 }}>ID Negara</label>
+                      <input
+                        type="text"
+                        value={inspectCountry}
+                        onChange={e => setInspectCountry(e.target.value)}
+                        placeholder="Contoh: 6 (Indonesia)"
+                        style={{
+                          width: '100%', background: 'var(--bg-3)', border: '1px solid var(--border)',
+                          borderRadius: 'var(--radius-sm)', padding: '7px 10px',
+                          color: 'var(--text-1)', fontSize: '0.85rem',
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-3)', marginBottom: 4 }}>Kode Layanan</label>
+                      <input
+                        type="text"
+                        value={inspectService}
+                        onChange={e => setInspectService(e.target.value)}
+                        placeholder="Contoh: wa (WhatsApp)"
+                        style={{
+                          width: '100%', background: 'var(--bg-3)', border: '1px solid var(--border)',
+                          borderRadius: 'var(--radius-sm)', padding: '7px 10px',
+                          color: 'var(--text-1)', fontSize: '0.85rem',
+                        }}
+                      />
+                    </div>
+                    <button
+                      onClick={handleInspectProviders}
+                      disabled={inspectLoading}
+                      style={{
+                        padding: '7px 16px', borderRadius: 'var(--radius-sm)',
+                        background: 'var(--accent)', border: 'none', color: '#fff',
+                        fontWeight: 600, fontSize: '0.82rem', cursor: inspectLoading ? 'not-allowed' : 'pointer',
+                        opacity: inspectLoading ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: 6,
+                      }}
+                    >
+                      {inspectLoading ? 'Memuat...' : '🔍 Cek Provider'}
+                    </button>
+                  </div>
+
+                  {inspectMsg && (
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-3)', marginBottom: 10 }}>{inspectMsg}</div>
+                  )}
+
+                  {inspectList && inspectList.length > 0 && (
+                    <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                        <thead>
+                          <tr style={{ background: 'var(--bg-3)', borderBottom: '1px solid var(--border)', textAlign: 'left', color: 'var(--text-3)' }}>
+                            <th style={{ padding: '8px 10px' }}>Provider ID</th>
+                            <th style={{ padding: '8px 10px' }}>Harga (IDR)</th>
+                            <th style={{ padding: '8px 10px' }}>Harga ($)</th>
+                            <th style={{ padding: '8px 10px' }}>Stok</th>
+                            <th style={{ padding: '8px 10px' }}>Status</th>
+                            <th style={{ padding: '8px 10px', textAlign: 'right' }}>Aksi</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {inspectList.map(prov => {
+                            const isBl = blacklistedIds.includes(String(prov.provider_id));
+                            return (
+                              <tr key={prov.provider_id} style={{
+                                borderBottom: '1px solid var(--border)',
+                                background: isBl ? 'rgba(230,57,70,0.06)' : 'transparent',
+                              }}>
+                                <td style={{ padding: '8px 10px', fontFamily: 'var(--mono)', fontWeight: 700, color: isBl ? '#e63946' : 'var(--text-1)' }}>
+                                  {prov.provider_id}
+                                </td>
+                                <td style={{ padding: '8px 10px', fontWeight: 600, color: 'var(--accent)' }}>
+                                  {prov.price_format}
+                                </td>
+                                <td style={{ padding: '8px 10px', fontFamily: 'var(--mono)', color: 'var(--text-3)' }}>
+                                  ${prov.price_usd}
+                                </td>
+                                <td style={{ padding: '8px 10px', color: 'var(--text-2)' }}>
+                                  {prov.stock.toLocaleString('id-ID')}
+                                </td>
+                                <td style={{ padding: '8px 10px' }}>
+                                  {isBl ? (
+                                    <span style={{ color: '#e63946', fontSize: '0.72rem', fontWeight: 600 }}>🚫 DIBLOKIR</span>
+                                  ) : (
+                                    <span style={{ color: 'var(--green)', fontSize: '0.72rem', fontWeight: 600 }}>✓ AKTIF</span>
+                                  )}
+                                </td>
+                                <td style={{ padding: '8px 10px', textAlign: 'right' }}>
+                                  {isBl ? (
+                                    <button
+                                      onClick={() => handleRemoveBlacklist(prov.provider_id)}
+                                      disabled={blackSaving}
+                                      style={{
+                                        padding: '3px 8px', fontSize: '0.72rem', borderRadius: 4,
+                                        background: 'rgba(0,200,150,0.15)', color: 'var(--green)',
+                                        border: '1px solid rgba(0,200,150,0.3)', cursor: 'pointer',
+                                      }}
+                                    >
+                                      ✓ Aktifkan
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleAddBlacklist(prov.provider_id)}
+                                      disabled={blackSaving}
+                                      style={{
+                                        padding: '3px 8px', fontSize: '0.72rem', borderRadius: 4,
+                                        background: 'rgba(230,57,70,0.15)', color: '#e63946',
+                                        border: '1px solid rgba(230,57,70,0.3)', cursor: 'pointer',
+                                      }}
+                                    >
+                                      🚫 Blacklist
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* SMTP Gmail Setting */}

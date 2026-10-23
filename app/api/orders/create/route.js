@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabase';
 import { getAuthUser } from '@/lib/auth';
-import { createOrder } from '@/lib/otpProvider';
+import { createOrder, getBlacklistAsync } from '@/lib/otpProvider';
 
 export async function POST(request) {
   try {
@@ -15,6 +15,17 @@ export async function POST(request) {
 
     if (!negara || !layanan || !operator) {
       return NextResponse.json({ error: 'Parameter tidak lengkap' }, { status: 400 });
+    }
+
+    // ─── BLACKLIST CHECK ──────────────────────────────────────────────────────
+    if (provider_id) {
+      const blacklist = await getBlacklistAsync();
+      if (blacklist.has(String(provider_id).trim())) {
+        return NextResponse.json(
+          { error: 'Stok nomor habis untuk pilihan ini. Coba harga atau negara lain.' },
+          { status: 500 }
+        );
+      }
     }
 
     // ─── PRICE SANITY CHECK ───────────────────────────────────────────────────

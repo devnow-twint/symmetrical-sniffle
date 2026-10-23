@@ -510,15 +510,38 @@ export default function OrderPage() {
 
   const handleAction = async (orderId, action) => {
     if (action === 'cancel' && cancellingRef.current.has(orderId)) return;
+
+    // Jika di state lokal sudah ada OTP valid, jangan kirim cancel — langsung tampilkan OTP
+    if (action === 'cancel') {
+      const current = activeOrdersRef.current.find(o => o.order_id === orderId);
+      if (current && isRealOtp(current.otp_code)) {
+        Swal.fire({
+          icon: 'success',
+          title: 'Kode OTP Sudah Masuk! 🎉',
+          html: `<div style="font-size:0.9rem;color:var(--text-2);margin-bottom:12px">
+                  Pesanan tidak dapat dibatalkan karena kode OTP sudah berhasil diterima.
+                 </div>
+                 <div style="font-size:1.8rem;font-weight:700;font-family:var(--mono);color:var(--accent);letter-spacing:3px;background:var(--bg-2);padding:10px 18px;border-radius:8px;border:1px dashed var(--accent);margin:10px auto;display:inline-block">
+                   ${current.otp_code}
+                 </div>`,
+          confirmButtonText: 'Tutup',
+          background: '#ffffff',
+          color: '#0f172a',
+          customClass: { popup: 'swal-dark-popup', confirmButton: 'swal-btn-confirm' },
+        });
+        return;
+      }
+    }
+
     setActionLoading(orderId);
     swalLoading(
-      action === 'cancel' ? 'Sedang membatalkan...' : 'Memproses...',
-      action === 'cancel' ? 'Mohon tunggu, pesanan sedang dibatalkan' : ''
+      action === 'cancel' ? 'Sedang memeriksa & membatalkan...' : 'Memproses...',
+      action === 'cancel' ? 'Memeriksa status OTP sebelum membatalkan...' : ''
     );
     try {
       const res = await fetch('/api/orders/action', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        headers: { 'Content-Type': 'application/json', ...getFreshHeaders() },
         body: JSON.stringify({ order_id: orderId, status: action, server: 'smsbower' }),
       });
       const data = await res.json();
@@ -529,9 +552,50 @@ export default function OrderPage() {
         }
         await loadActiveOrders();
       } else {
-        swalError('Gagal', data.error || data.message || 'Terjadi kesalahan server');
+        // CEK APAKAH GAGAL KARENA OTP SUDAH MASUK
+        if (data.has_otp || data.otp_code || (data.error && data.error.toLowerCase().includes('otp'))) {
+          const otpReceived = data.otp_code || null;
+
+          // 1. LANGSUNG UPDATE STATE activeOrders AGAR JAM (COUNTDOWN) BERUBAH JADI KODE OTP!
+          setActiveOrders(prev =>
+            prev.map(o => {
+              if (o.order_id === orderId) {
+                return {
+                  ...o,
+                  status: data.status || 'received',
+                  otp_code: otpReceived || o.otp_code,
+                };
+              }
+              return o;
+            })
+          );
+
+          // 2. Muat ulang active orders dari DB di background
+          loadActiveOrders();
+
+          // 3. Tampilkan SweetAlert informatif dengan kode OTP langsung
+          Swal.fire({
+            icon: 'info',
+            title: 'Kode OTP Sudah Masuk! 🎉',
+            html: `<div style="font-size:0.9rem;color:var(--text-2);margin-bottom:12px">
+                    Pesanan tidak dapat dibatalkan karena kode OTP sudah berhasil diterima.
+                   </div>
+                   ${otpReceived && isRealOtp(otpReceived) ? `
+                   <div style="font-size:1.8rem;font-weight:700;font-family:var(--mono);color:var(--accent);letter-spacing:3px;background:var(--bg-2);padding:10px 18px;border-radius:8px;border:1px dashed var(--accent);margin:10px auto;display:inline-block">
+                     ${otpReceived}
+                   </div>` : ''}`,
+            confirmButtonText: 'Tutup',
+            background: '#ffffff',
+            color: '#0f172a',
+            customClass: { popup: 'swal-dark-popup', confirmButton: 'swal-btn-confirm' },
+          });
+        } else {
+          await loadActiveOrders();
+          swalError('Gagal Membatalkan', data.error || data.message || 'Terjadi kesalahan server');
+        }
       }
     } catch {
+      await loadActiveOrders();
       swalError('Kesalahan Jaringan', 'Tidak bisa terhubung ke server. Periksa koneksi kamu.');
     }
     setActionLoading(null);
