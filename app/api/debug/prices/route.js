@@ -3,7 +3,7 @@ import { getServiceSupabase } from '@/lib/supabase';
 import { getAuthUser } from '@/lib/auth';
 
 const SMSBOWER_BASE = 'https://smsbower.page/stubs/handler_api.php';
-const SMSBOWER_KEY  = process.env.SMSBOWER_API_KEY || 'P37lcf64UAfiAVvTtli1MY4NG3hY1A09';
+const SMSBOWER_KEY  = process.env.SMSBOWER_API_KEY || '';
 
 export async function GET(request) {
   try {

@@ -127,6 +127,19 @@ function DropdownField({ label, placeholder, options, value, onChange, loading, 
   );
 }
 
+const POPULAR_SERVICES = [
+  { code: 'wa', name: 'WhatsApp', iconUrl: '/services/wa.svg' },
+  { code: 'ka', name: 'Shopee', iconUrl: '/services/ka.svg' },
+  { code: 'tg', name: 'Telegram', iconUrl: '/services/tg.svg' },
+  { code: 'go', name: 'Google', iconUrl: '/services/go.svg' },
+  { code: 'lf', name: 'TikTok', iconUrl: '/services/lf.svg' },
+  { code: 'ig', name: 'Instagram', iconUrl: '/services/ig.svg' },
+  { code: 'dr', name: 'ChatGPT', iconUrl: '/services/dr.svg' },
+  { code: 'tw', name: 'Twitter/X', iconUrl: '/services/tw.svg' },
+  { code: 'ds', name: 'Discord', iconUrl: '/services/ds.svg' },
+  { code: 'fb', name: 'Facebook', iconUrl: '/services/fb.svg' },
+];
+
 export default function OrderPage() {
   const router = useRouter();
   const { session, profile, ready, refreshProfile } = useProfile();
@@ -199,6 +212,16 @@ export default function OrderPage() {
   const [errorSvc, setErrorSvc] = useState(false);
   const [errorPrice, setErrorPrice] = useState(false);
 
+  // Mode: 'regular' (Semua Negara di kiri) vs 'top' (Rekomendasi Top 10 di kanan)
+  const [orderMode, setOrderMode] = useState('regular');
+  const [allServices, setAllServices] = useState([]);
+  const [loadingAllSvc, setLoadingAllSvc] = useState(false);
+  const [errorAllSvc, setErrorAllSvc] = useState(false);
+
+  const [topCountries, setTopCountries] = useState([]);
+  const [loadingTopCtry, setLoadingTopCtry] = useState(false);
+  const [errorTopCtry, setErrorTopCtry] = useState(false);
+
   // Active orders state
   const [activeOrders, setActiveOrders] = useState([]);
   const activeOrdersRef = useRef(activeOrders);
@@ -212,11 +235,12 @@ export default function OrderPage() {
   const authHeaders = { Authorization: `Bearer ${token}` };
   const getFreshHeaders = () => ({ Authorization: `Bearer ${sessionRef.current?.access_token || token}` });
 
-  // ── On mount: load countries ───────────────────────────────────────────
+  // ── On mount: load countries, all services & active orders ──────────────
   useEffect(() => {
     if (!ready) return;
     if (!session) { router.push('/login'); return; }
     loadCountries();
+    loadAllServices();
     loadActiveOrders();
   }, [ready, session]);
 
@@ -399,6 +423,89 @@ export default function OrderPage() {
       setCountries(data.data);
     } catch { setErrorCtry(true); }
     setLoadingCtry(false);
+  };
+
+  const loadAllServices = async () => {
+    setLoadingAllSvc(true); setErrorAllSvc(false);
+    try {
+      const res = await fetch('/api/services');
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      if (!data.data?.length) throw new Error();
+      setAllServices(data.data);
+    } catch { setErrorAllSvc(true); }
+    setLoadingAllSvc(false);
+  };
+
+  const switchMode = (mode) => {
+    if (mode === orderMode) return;
+    setOrderMode(mode);
+    setSelectedCountry(null);
+    setSelectedService(null);
+    setSelectedPrice(null);
+    setServices([]);
+    setPrices([]);
+    setTopCountries([]);
+    setErrorSvc(false);
+    setErrorPrice(false);
+    setErrorTopCtry(false);
+    if (mode === 'top') {
+      if (allServices.length === 0) loadAllServices();
+    } else {
+      if (countries.length === 0) loadCountries();
+    }
+  };
+
+  const handleTopServiceChange = async (serviceCode) => {
+    const svc = allServices.find(s => String(s.service_code) === String(serviceCode))
+      || POPULAR_SERVICES.find(s => String(s.code) === String(serviceCode))
+      || { service_code: serviceCode, service_name: serviceCode.toUpperCase() };
+
+    setSelectedService(svc);
+    setSelectedCountry(null);
+    setSelectedPrice(null);
+    setTopCountries([]);
+    setPrices([]);
+    setErrorTopCtry(false);
+    setLoadingTopCtry(true);
+
+    try {
+      const res = await fetch(`/api/top-countries?service=${svc.service_code}`);
+      if (!res.ok) throw new Error();
+      const json = await res.json();
+      if (!json.success || !json.data?.length) throw new Error(json.error || 'Data tidak tersedia');
+      setTopCountries(json.data);
+
+      // Auto-select rank 1 country & cheapest gold partner
+      const firstCtry = json.data[0];
+      if (firstCtry) {
+        setSelectedCountry({
+          id: firstCtry.country_id,
+          name: firstCtry.country_name,
+        });
+        setPrices(firstCtry.partners || []);
+        if (firstCtry.partners?.length > 0) {
+          setSelectedPrice(firstCtry.partners[0]);
+        }
+      }
+    } catch {
+      setErrorTopCtry(true);
+    } finally {
+      setLoadingTopCtry(false);
+    }
+  };
+
+  const handleSelectTopCountry = (c) => {
+    setSelectedCountry({
+      id: c.country_id,
+      name: c.country_name,
+    });
+    setPrices(c.partners || []);
+    if (c.partners?.length > 0) {
+      setSelectedPrice(c.partners[0]);
+    } else {
+      setSelectedPrice(null);
+    }
   };
 
   const handleCountryChange = async (countryId) => {
@@ -696,46 +803,254 @@ export default function OrderPage() {
                 </strong>
               </div>
 
-              {/* SMS Bower single flow: Negara → Layanan → Operator */}
-              <DropdownField
-                label="Negara"
-                placeholder="— Pilih negara —"
-                options={countries}
-                value={selectedCountry?.id || ''}
-                onChange={handleCountryChange}
-                loading={loadingCtry}
-                error={errorCtry}
-                onRetry={loadCountries}
-                disabled={false}
-                keyField="id"
-                labelField="name"
-              />
-              <DropdownField
-                label="Layanan / Aplikasi"
-                placeholder="— Pilih aplikasi —"
-                options={services}
-                value={selectedService?.service_code || ''}
-                onChange={handleServiceChange}
-                loading={loadingSvc}
-                error={errorSvc}
-                onRetry={retryServices}
-                disabled={!selectedCountry}
-                keyField="service_code"
-                labelField="service_name"
-              />
-              <DropdownField
-                label="Pilih Harga"
-                placeholder="— Pilih harga —"
-                options={prices}
-                value={selectedPrice?.id || ''}
-                onChange={handlePriceChange}
-                loading={loadingPrice}
-                error={errorPrice}
-                onRetry={retryPrices}
-                disabled={!selectedService}
-                keyField="id"
-                labelField="label"
-              />
+              {/* Mode Switch Tabs: [🌐 Semua Negara] di kiri, [⚡ Top Rekomendasi] di kanan */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                background: 'var(--bg-2)',
+                padding: 4,
+                borderRadius: 'var(--radius-sm)',
+                marginBottom: 20,
+                border: '1px solid var(--border)',
+                gap: 4,
+              }}>
+                <button
+                  type="button"
+                  onClick={() => switchMode('regular')}
+                  style={{
+                    padding: '9px 12px',
+                    fontSize: '0.85rem',
+                    fontWeight: orderMode === 'regular' ? 700 : 500,
+                    borderRadius: 'calc(var(--radius-sm) - 2px)',
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: orderMode === 'regular' ? 'var(--accent)' : 'transparent',
+                    color: orderMode === 'regular' ? '#fff' : 'var(--text-2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    transition: 'all 0.18s ease',
+                  }}
+                >
+                  <span>🌐</span>
+                  <span>Semua Negara</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => switchMode('top')}
+                  style={{
+                    padding: '9px 12px',
+                    fontSize: '0.85rem',
+                    fontWeight: orderMode === 'top' ? 700 : 500,
+                    borderRadius: 'calc(var(--radius-sm) - 2px)',
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: orderMode === 'top' ? 'var(--accent)' : 'transparent',
+                    color: orderMode === 'top' ? '#fff' : 'var(--text-2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    transition: 'all 0.18s ease',
+                  }}
+                >
+                  <span>⚡</span>
+                  <span>Top Rekomendasi</span>
+                </button>
+              </div>
+
+              {orderMode === 'top' ? (
+                <>
+                  {/* Quick Chips: Aplikasi Populer */}
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <label className="form-label" style={{ marginBottom: 0 }}>Aplikasi Populer</label>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>Klik untuk pilih instan</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {POPULAR_SERVICES.map(app => {
+                        const isSel = selectedService?.service_code === app.code;
+                        return (
+                          <button
+                            key={app.code}
+                            type="button"
+                            onClick={() => handleTopServiceChange(app.code)}
+                            style={{
+                              padding: '6px 11px',
+                              fontSize: '0.78rem',
+                              borderRadius: 'var(--radius-sm)',
+                              border: `1px solid ${isSel ? 'var(--accent)' : 'var(--border)'}`,
+                              background: isSel ? 'var(--accent-glow)' : 'var(--bg-2)',
+                              color: isSel ? 'var(--accent)' : 'var(--text-2)',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              fontWeight: isSel ? 700 : 500,
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            <img
+                              src={app.iconUrl}
+                              alt={app.name}
+                              width={16}
+                              height={16}
+                              style={{ width: 16, height: 16, objectFit: 'contain', flexShrink: 0, display: 'inline-block' }}
+                            />
+                            <span>{app.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Dropdown Cari Layanan Lain */}
+                  <DropdownField
+                    label="Atau Cari Layanan Lain"
+                    placeholder="— Pilih atau ketik nama aplikasi —"
+                    options={allServices}
+                    value={selectedService?.service_code || ''}
+                    onChange={handleTopServiceChange}
+                    loading={loadingAllSvc}
+                    error={errorAllSvc}
+                    onRetry={loadAllServices}
+                    disabled={false}
+                    keyField="service_code"
+                    labelField="service_name"
+                  />
+
+                  {/* Top 10 Rekomendasi Negara */}
+                  {selectedService && (
+                    <div style={{ marginTop: 14, marginBottom: 16 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <label className="form-label" style={{ marginBottom: 0 }}>
+                          Top 10 Negara Rekomendasi ({selectedService.service_name})
+                        </label>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>⭐ Gold Partners</span>
+                      </div>
+
+                      {loadingTopCtry ? (
+                        <div style={{ padding: '24px', textAlign: 'center', background: 'var(--bg-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                          <div className="spinner" style={{ width: 18, height: 18, margin: '0 auto 8px' }}></div>
+                          <div style={{ color: 'var(--text-3)', fontSize: '0.8rem' }}>Mencari 10 negara terbaik & termurah...</div>
+                        </div>
+                      ) : errorTopCtry ? (
+                        <div style={{ padding: '14px', background: 'var(--bg-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--red)', color: 'var(--red)', fontSize: '0.82rem', textAlign: 'center' }}>
+                          ⚠ Gagal memuat rekomendasi negara.{' '}
+                          <button type="button" onClick={() => handleTopServiceChange(selectedService.service_code)} style={{ background: 'none', border: 'none', color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer' }}>
+                            Coba lagi
+                          </button>
+                        </div>
+                      ) : topCountries.length === 0 ? (
+                        <div style={{ padding: '14px', textAlign: 'center', color: 'var(--text-3)', background: 'var(--bg-2)', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem' }}>
+                          Belum ada rekomendasi negara untuk layanan ini. Coba tab &quot;Semua Negara&quot;.
+                        </div>
+                      ) : (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8, maxHeight: 250, overflowY: 'auto', paddingRight: 2 }}>
+                          {topCountries.map((c, idx) => {
+                            const isSelected = String(selectedCountry?.id) === String(c.country_id);
+                            const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
+                            return (
+                              <div
+                                key={c.country_id}
+                                onClick={() => handleSelectTopCountry(c)}
+                                style={{
+                                  background: isSelected ? 'var(--accent-glow)' : 'var(--bg-2)',
+                                  border: `1.5px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
+                                  borderRadius: 'var(--radius-sm)',
+                                  padding: '9px 10px',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: 3,
+                                  transition: 'all 0.15s ease',
+                                }}
+                                onMouseEnter={e => { if (!isSelected) e.currentTarget.style.borderColor = 'var(--text-3)'; }}
+                                onMouseLeave={e => { if (!isSelected) e.currentTarget.style.borderColor = 'var(--border)'; }}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: idx < 3 ? 'var(--yellow)' : 'var(--text-3)' }}>
+                                    {medal}
+                                  </span>
+                                  <span style={{ fontSize: '0.68rem', color: 'var(--text-3)' }}>
+                                    {c.total_stock?.toLocaleString()} stok
+                                  </span>
+                                </div>
+                                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: isSelected ? 'var(--accent)' : 'var(--text-1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={c.country_name}>
+                                  {c.country_name}
+                                </div>
+                                <div style={{ fontSize: '0.75rem', fontFamily: 'var(--mono)', color: 'var(--green)', fontWeight: 600 }}>
+                                  {c.cheapest_price_format}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Pilihan Partner / Harga untuk Top Country */}
+                  {selectedCountry && prices.length > 0 && (
+                    <DropdownField
+                      label={`Pilihan Harga / Partner (${selectedCountry.name})`}
+                      placeholder="— Pilih harga —"
+                      options={prices}
+                      value={selectedPrice?.id || ''}
+                      onChange={handlePriceChange}
+                      loading={false}
+                      error={false}
+                      disabled={false}
+                      keyField="id"
+                      labelField="label"
+                    />
+                  )}
+                </>
+              ) : (
+                /* Regular Flow: Negara → Layanan → Harga */
+                <>
+                  <DropdownField
+                    label="Negara"
+                    placeholder="— Pilih negara —"
+                    options={countries}
+                    value={selectedCountry?.id || ''}
+                    onChange={handleCountryChange}
+                    loading={loadingCtry}
+                    error={errorCtry}
+                    onRetry={loadCountries}
+                    disabled={false}
+                    keyField="id"
+                    labelField="name"
+                  />
+                  <DropdownField
+                    label="Layanan / Aplikasi"
+                    placeholder="— Pilih aplikasi —"
+                    options={services}
+                    value={selectedService?.service_code || ''}
+                    onChange={handleServiceChange}
+                    loading={loadingSvc}
+                    error={errorSvc}
+                    onRetry={retryServices}
+                    disabled={!selectedCountry}
+                    keyField="service_code"
+                    labelField="service_name"
+                  />
+                  <DropdownField
+                    label="Pilih Harga"
+                    placeholder="— Pilih harga —"
+                    options={prices}
+                    value={selectedPrice?.id || ''}
+                    onChange={handlePriceChange}
+                    loading={loadingPrice}
+                    error={errorPrice}
+                    onRetry={retryPrices}
+                    disabled={!selectedService}
+                    keyField="id"
+                    labelField="label"
+                  />
+                </>
+              )}
 
               {/* Price summary */}
               {selectedPrice && (
