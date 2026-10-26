@@ -66,7 +66,7 @@ export async function POST(request) {
       // Notify SMS Bower that activation is confirmed (status=6)
       try { await doneOrder(order_id); } catch { }
       const { data: completedOrder } = await supabase.from('orders')
-        .update({ status: 'completed' })
+        .update({ status: 'completed', resend_pending: false })
         .eq('order_id', order_id)
         .in('status', ['received', 'waiting', 'expiring'])
         .select()
@@ -228,14 +228,14 @@ async function doRefund({ supabase, user, order, order_id, reason, providerMessa
     .maybeSingle();
 
   if (existingRefund) {
-    await supabase.from('orders').update({ status: 'canceled' }).eq('order_id', order_id);
+    await supabase.from('orders').update({ status: 'canceled', resend_pending: false }).eq('order_id', order_id);
     return NextResponse.json({ success: false, error: 'Refund sudah diproses sebelumnya.' }, { status: 400 });
   }
 
   // Atomic update status — hanya jika masih waiting/expiring/received-tanpa-OTP
   const { data: updatedOrder, error: updateErr } = await supabase
     .from('orders')
-    .update({ status: 'canceled' })
+    .update({ status: 'canceled', resend_pending: false })
     .eq('order_id', order_id)
     .in('status', ['waiting', 'expiring', 'received'])
     .select()

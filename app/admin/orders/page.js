@@ -204,6 +204,8 @@ export default function AdminOrdersPage() {
                             {(() => {
                               const codes = getCodes(o);
                               if (codes.length === 0) return <span style={{ color:'var(--text-3)' }}>—</span>;
+                              const isExpired = o.expires_at && new Date(o.expires_at).getTime() <= Date.now();
+                              const showPending = o.status === 'received' && o.resend_pending && !isExpired;
                               return (
                                 <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
                                   {codes.map((c, i) => (
@@ -211,7 +213,7 @@ export default function AdminOrdersPage() {
                                       {codes.length > 1 && <span style={{ color:'var(--text-3)', fontWeight:400, fontSize:'0.7rem' }}>#{i + 1} </span>}{c}
                                     </span>
                                   ))}
-                                  {o.resend_pending && <span style={{ color:'var(--yellow)', fontSize:'0.7rem' }}>⏳ menunggu kode berikutnya</span>}
+                                  {showPending && <span style={{ color:'var(--yellow)', fontSize:'0.7rem' }}>⏳ menunggu kode berikutnya</span>}
                                 </div>
                               );
                             })()}
@@ -323,9 +325,13 @@ export default function AdminOrdersPage() {
                           <button className="btn btn-ghost btn-sm" onClick={() => copyText(c)}>{copied === String(c) ? '✅' : '📋'}</button>
                         </div>
                       ))}
-                      {detailModal.resend_pending && (
-                        <div style={{ color:'var(--yellow)', fontSize:'0.8rem' }}>⏳ User sudah minta SMS ulang — menunggu kode berikutnya</div>
-                      )}
+                      {(() => {
+                        const isExpired = detailModal.expires_at && new Date(detailModal.expires_at).getTime() <= Date.now();
+                        if (detailModal.status === 'received' && detailModal.resend_pending && !isExpired) {
+                          return <div style={{ color:'var(--yellow)', fontSize:'0.8rem' }}>⏳ User sudah minta SMS ulang — menunggu kode berikutnya</div>;
+                        }
+                        return null;
+                      })()}
                     </div>
                   );
                 })()}

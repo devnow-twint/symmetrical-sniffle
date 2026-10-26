@@ -246,11 +246,15 @@ export default function OrderPage() {
 
   // ── Smart Auto-poll: cek provider tiap 10 detik HANYA saat ada order pending ──
   // Fallback hemat DB saat webhook provider delay/terlewat.
-  const isPendingOrder = (o) =>
-    (['waiting', 'expiring'].includes(o.status) && !isRealOtp(o.otp_code)) ||
-    (o.status === 'received' && o.resend_pending);
+  const isPendingOrder = (o) => {
+    const isExpired = o.expires_at && new Date(o.expires_at).getTime() <= now;
+    if (isExpired) return false;
+    return (
+      (['waiting', 'expiring'].includes(o.status) && !isRealOtp(o.otp_code)) ||
+      (o.status === 'received' && o.resend_pending)
+    );
+  };
   const hasPendingOrders = activeOrders.some(isPendingOrder);
-  const hasResendWaiting = activeOrders.some(o => o.status === 'received' && o.resend_pending);
 
   useEffect(() => {
     if (!hasPendingOrders) return;
@@ -305,10 +309,10 @@ export default function OrderPage() {
           refreshProfile();
         }
       }
-    }, hasResendWaiting ? 3000 : 10000);
+    }, 10000);
 
     return () => clearInterval(interval);
-  }, [hasPendingOrders, hasResendWaiting]);
+  }, [hasPendingOrders]);
 
   // ── Supabase Realtime: DINONAKTIFKAN (penyebab replication slot stuck 44m dan ratusan error di Postgres) ──
   // Status dan OTP sepenuhnya ditangani oleh Smart Auto-poll 10s & SMS Bower Webhook.
@@ -1192,7 +1196,7 @@ export default function OrderPage() {
                                 </div>
                               ));
                             })()}
-                            {order.resend_pending && (
+                            {order.resend_pending && remainingMs > 0 && (
                               <div style={{ margin: '12px 0 0', display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center', color: 'var(--text-2)', fontSize: '0.85rem' }}>
                                 <span className="spinner" style={{ width: 14, height: 14 }}></span> Menunggu kode berikutnya (SMS ulang)...
                               </div>

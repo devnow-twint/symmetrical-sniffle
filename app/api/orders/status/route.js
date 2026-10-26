@@ -21,7 +21,7 @@ export async function GET(request) {
     // Single query — ambil semua field sekaligus (user_id, server, price, status)
     // Sebelumnya 2 query terpisah → sekarang 1 query, hemat 1 DB round-trip per polling
     const { data: orderRow } = await supabase
-      .from('orders').select('user_id, server, price, status, otp_code, otp_codes, otp_text, resend_pending').eq('order_id', order_id).single();
+      .from('orders').select('user_id, server, price, status, otp_code, otp_codes, otp_text, resend_pending, expires_at').eq('order_id', order_id).single();
     if (!orderRow || orderRow.user_id !== user.id) {
       return NextResponse.json({ error: 'Order tidak ditemukan' }, { status: 404 });
     }
@@ -37,6 +37,18 @@ export async function GET(request) {
 
     // ── Resend SMS: order 'received' yang sedang menunggu kode ke-2 ─────────────
     if (orderRow.status === 'received' && orderRow.resend_pending) {
+      // Jika waktu aktivasi sudah habis (>25 menit), matikan resend_pending dan stop polling
+      const isExpired = orderRow.expires_at && new Date(orderRow.expires_at).getTime() <= Date.now();
+      if (isExpired) {
+        await supabase.from('orders')
+          .update({ resend_pending: false })
+          .eq('order_id', order_id);
+        return NextResponse.json({
+          success: true,
+          data: { ...currentOrder, resend_pending: false },
+        });
+      }
+
       const prov = await getOrderStatus(order_id, orderRow.server || server);
       const known = Array.isArray(orderRow.otp_codes) ? orderRow.otp_codes : [];
       const resendData = {
@@ -60,7 +72,10 @@ export async function GET(request) {
 
     if (!['waiting', 'expiring'].includes(orderRow.status)) {
       // Order already finalized (canceled/completed/received) — skip provider poll
-      return NextResponse.json({ success: true, data: currentOrder });
+      if (orderRow.resend_pending) {
+        await supabase.from('orders').update({ resend_pending: false }).eq('order_id', order_id);
+      }
+      return NextResponse.json({ success: true, data: { ...currentOrder, resend_pending: false } });
     }
 
     // CRITICAL: Use server from DB, not from query param
