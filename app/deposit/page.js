@@ -112,7 +112,7 @@ export default function DepositPage() {
               <div style={{ fontSize: '2.5rem', flexShrink: 0 }}>🔒</div>
               <div>
                 <div style={{ fontWeight: 700, fontSize: '1.05rem', color: '#ff6b6b', marginBottom: 6 }}>
-                  Deposit Sedang Ditutup
+                  Deposit Sedang Ditutup (Deposit dibuka pukul 08.00-22.00 WIB)
                 </div>
                 <div style={{ fontSize: '0.88rem', color: 'var(--text-2)', lineHeight: 1.6 }}>
                   Fitur deposit saat ini tidak tersedia. Silakan coba lagi nanti atau hubungi admin untuk informasi lebih lanjut.
