@@ -1,4 +1,5 @@
 import './globals.css';
+import MaintenanceGuard from '@/components/MaintenanceGuard';
 
 export const metadata = {
   title: 'DuniaNokos - Beli Nomor OTP Murah',
@@ -12,7 +13,11 @@ export default function RootLayout({ children }) {
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
-      <body>{children}</body>
+      <body>
+        <MaintenanceGuard>
+          {children}
+        </MaintenanceGuard>
+      </body>
     </html>
   );
 }

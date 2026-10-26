@@ -15,6 +15,10 @@ export default function AdminUsersPage() {
   const [topupAmount, setTopupAmount] = useState('');
   const [topupNote, setTopupNote] = useState('');
   const [topupLoading, setTopupLoading] = useState(false);
+  const [deductModal, setDeductModal] = useState(null);
+  const [deductAmount, setDeductAmount] = useState('');
+  const [deductNote, setDeductNote] = useState('');
+  const [deductLoading, setDeductLoading] = useState(false);
   const [msg, setMsg] = useState({ type: '', text: '' });
 
   useEffect(() => {
@@ -57,6 +61,31 @@ export default function AdminUsersPage() {
       }
     } catch { setMsg({ type: 'error', text: 'Gagal topup' }); }
     setTopupLoading(false);
+  };
+
+  const handleDeduct = async () => {
+    if (!deductAmount || parseInt(deductAmount) <= 0) {
+      setMsg({ type: 'error', text: 'Masukkan nominal penarikan yang valid' }); return;
+    }
+    setDeductLoading(true);
+    try {
+      const res = await fetch('/api/admin/deduct', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ user_id: deductModal.user_id, amount: parseInt(deductAmount), note: deductNote }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMsg({ type: 'success', text: `✅ Berhasil menarik Rp${parseInt(deductAmount).toLocaleString('id-ID')} dari ${deductModal.username}` });
+        setDeductModal(null);
+        setDeductAmount('');
+        setDeductNote('');
+        loadUsers(session.access_token);
+      } else {
+        setMsg({ type: 'error', text: data.error });
+      }
+    } catch { setMsg({ type: 'error', text: 'Gagal menarik saldo' }); }
+    setDeductLoading(false);
   };
 
   if (!ready || !session) {
@@ -154,10 +183,26 @@ export default function AdminUsersPage() {
                           {new Date(u.created_at).toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' })}
                         </td>
                         <td>
-                          <button className="btn btn-primary btn-sm"
-                            onClick={() => setTopupModal({ user_id: u.id, username: u.username })}>
-                            ＋ Topup
-                          </button>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button className="btn btn-primary btn-sm"
+                              onClick={() => { setTopupModal({ user_id: u.id, username: u.username }); setTopupAmount(''); setTopupNote(''); }}>
+                              ＋ Topup
+                            </button>
+                            <button className="btn btn-sm"
+                              onClick={() => { setDeductModal({ user_id: u.id, username: u.username, balance: u.balance }); setDeductAmount(''); setDeductNote(''); }}
+                              style={{
+                                background: 'rgba(230,57,70,0.12)',
+                                border: '1px solid rgba(230,57,70,0.4)',
+                                color: 'var(--red)',
+                                fontWeight: 600,
+                                padding: '4px 10px',
+                                borderRadius: 6,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              － Tarik
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -194,6 +239,35 @@ export default function AdminUsersPage() {
                     {topupLoading ? <><span className="spinner" style={{ width: 14, height: 14 }} /> Proses...</> : 'Topup'}
                   </button>
                   <button className="btn btn-ghost" onClick={() => { setTopupModal(null); setTopupAmount(''); }}>Batal</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Deduct Modal */}
+          {deductModal && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+              <div className="card" style={{ width: 400, background: 'var(--bg-1)', border: '1px solid var(--red)' }}>
+                <div className="card-title" style={{ marginBottom: 8, color: 'var(--red)' }}>－ Tarik Saldo — {deductModal.username}</div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-2)', marginBottom: 16 }}>
+                  Saldo saat ini: <strong style={{ color: 'var(--accent)' }}>Rp{Number(deductModal.balance || 0).toLocaleString('id-ID')}</strong>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Nominal Tarik (Rp)</label>
+                  <input className="form-input" type="number" placeholder="contoh: 25000"
+                    value={deductAmount} onChange={e => setDeductAmount(e.target.value)} autoFocus />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Alasan / Catatan (opsional)</label>
+                  <input className="form-input" type="text" placeholder="Penarikan manual, koreksi saldo, dll"
+                    value={deductNote} onChange={e => setDeductNote(e.target.value)} />
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button className="btn btn-full" onClick={handleDeduct} disabled={deductLoading}
+                    style={{ background: 'var(--red)', color: '#fff', border: 'none', fontWeight: 600 }}>
+                    {deductLoading ? <><span className="spinner" style={{ width: 14, height: 14 }} /> Proses...</> : 'Tarik Saldo'}
+                  </button>
+                  <button className="btn btn-ghost" onClick={() => { setDeductModal(null); setDeductAmount(''); }}>Batal</button>
                 </div>
               </div>
             </div>

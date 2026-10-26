@@ -171,6 +171,32 @@ export default function DashboardPage() {
               </button>
             </div>
             </div>
+            {/* Warning when active orders exist */}
+            {activeOrders.length > 0 && (
+              <div style={{
+                background: 'rgba(234, 179, 8, 0.12)',
+                border: '1px solid rgba(234, 179, 8, 0.35)',
+                borderRadius: 'var(--radius-sm)',
+                padding: '12px 14px',
+                marginBottom: 16,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                flexWrap: 'wrap',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: '1.3rem' }}>⚠️</span>
+                  <div style={{ fontSize: '0.82rem', color: 'var(--text-1)' }}>
+                    <strong>Kode OTP HANYA muncul di Halaman Order OTP!</strong> Dashboard tidak menampilkan kode realtime.
+                  </div>
+                </div>
+                <Link href="/order" className="btn btn-primary btn-sm" style={{ padding: '6px 14px', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                  Pantau OTP Sekarang →
+                </Link>
+              </div>
+            )}
+
             {loading ? (
               <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-3)' }}><span className="spinner"></span></div>
             ) : activeOrders.length === 0 ? (
@@ -182,7 +208,7 @@ export default function DashboardPage() {
                 <table className="responsive">
                   <thead>
                     <tr>
-                      <th>Layanan</th><th>Nomor</th><th>Harga</th><th>Status</th><th>Kode OTP</th>
+                      <th>Layanan</th><th>Nomor</th><th>Harga</th><th>Status</th><th>Aksi</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -197,8 +223,22 @@ export default function DashboardPage() {
                         <td data-label="Nomor" className="mono-cell" style={{ color: 'var(--text-2)' }}>{o.phone_number || 'Menunggu...'}</td>
                         <td data-label="Harga" className="mono-cell">Rp{Number(o.price).toLocaleString('id-ID')}</td>
                         <td data-label="Status">{statusBadge(o.status)}</td>
-                        <td data-label="Kode OTP" className="mono-cell" style={{ color: 'var(--accent)', fontWeight: 700, letterSpacing: 1 }}>
-                          {o.otp_code && o.otp_code !== '-' ? o.otp_code : '-'}
+                        <td data-label="Aksi">
+                          <Link
+                            href="/order"
+                            className="btn btn-primary btn-sm"
+                            style={{
+                              padding: '5px 12px',
+                              fontSize: '0.78rem',
+                              whiteSpace: 'nowrap',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 6
+                            }}
+                          >
+                            <span>📲</span>
+                            <span>Pantau OTP</span>
+                          </Link>
                         </td>
                       </tr>
                     ))}
@@ -209,10 +249,8 @@ export default function DashboardPage() {
           </div>
 
           {/* Realtime OTP banner */}
-          <a
-            href="https://www.dunianokos.web.id/order"
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            href="/order"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               gap: 12, marginBottom: 32, padding: '14px 20px',
@@ -228,15 +266,15 @@ export default function DashboardPage() {
               <span style={{ fontSize: '1.3rem' }}>⚡</span>
               <div>
                 <div style={{ fontWeight: 700, color: 'var(--text-1)', fontSize: '0.9rem', marginBottom: 2 }}>
-                  JIKA INGIN MELIHAT REALTIME OTP &amp; CANCEL BISA KLIK DISINI
+                  LIHAT OTP REALTIME &amp; BATALKAN PESANAN
                 </div>
                 <div style={{ fontSize: '0.77rem', color: 'var(--text-3)' }}>
-                  Pantau OTP masuk secara live, batalkan pesanan, dan kelola order aktif
+                  Pantau OTP masuk secara live, request SMS ulang (resend), dan kelola order aktif di halaman Order
                 </div>
               </div>
             </div>
-            <span style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '0.85rem', whiteSpace: 'nowrap' }}>Buka →</span>
-          </a>
+            <span style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '0.85rem', whiteSpace: 'nowrap' }}>Buka Layar OTP →</span>
+          </Link>
 
           <div className="grid-2" style={{ gap: 24, alignItems: 'flex-start' }}>
             {/* FAQ Area */}

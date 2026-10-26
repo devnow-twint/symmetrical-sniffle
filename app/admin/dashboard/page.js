@@ -68,6 +68,8 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [depositOpen, setDepositOpen] = useState(true);
   const [depositToggling, setDepositToggling] = useState(false);
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [maintenanceToggling, setMaintenanceToggling] = useState(false);
   const [rates, setRates] = useState({ usd_to_idr: 16000, otp_price_markup: 1.5 });
   const [ratesInput, setRatesInput] = useState({ usd_to_idr: '', otp_price_markup: '' });
   const [ratesSaving, setRatesSaving] = useState(false);
@@ -116,6 +118,7 @@ export default function AdminDashboardPage() {
       if (bd.success)  setProviderBalance(bd.data);
       if (stg.success) {
         setDepositOpen(stg.data?.deposit_open !== 'false');
+        setMaintenanceMode(stg.data?.maintenance_mode === 'true');
         setSmtpInput({ smtp_gmail_user: '', smtp_gmail_pass: '' });
         if (stg.data?.smtp_gmail_user === '__SET__' || stg.data?.smtp_gmail_pass === '__SET__') {
           setSmtpMsg('✅ SMTP Gmail sudah tersimpan. Isi ulang hanya jika ingin mengganti.');
@@ -145,6 +148,22 @@ export default function AdminDashboardPage() {
       if (d.success) setDepositOpen(newVal);
     } catch {}
     setDepositToggling(false);
+  };
+
+  const handleToggleMaintenance = async () => {
+    if (!session || maintenanceToggling) return;
+    setMaintenanceToggling(true);
+    try {
+      const newVal = !maintenanceMode;
+      const res = await fetch('/api/admin/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ key: 'maintenance_mode', value: newVal ? 'true' : 'false' }),
+      });
+      const d = await res.json();
+      if (d.success) setMaintenanceMode(newVal);
+    } catch {}
+    setMaintenanceToggling(false);
   };
 
   const handleSaveRates = async () => {
@@ -441,6 +460,56 @@ export default function AdminDashboardPage() {
               {depositToggling
                 ? <><span className="spinner" style={{ width: 14, height: 14, borderColor: 'currentColor', borderTopColor: 'transparent' }} /> Menyimpan...</>
                 : depositOpen ? '🔒 Tutup Deposit' : '🔓 Buka Deposit'
+              }
+            </button>
+          </div>
+
+          {/* Maintenance Mode Toggle */}
+          <div className="card" style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, border: maintenanceMode ? '1px solid #f59e0b' : '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{
+                width: 48, height: 48, borderRadius: 12,
+                background: maintenanceMode ? 'rgba(245, 158, 11, 0.18)' : 'rgba(100, 116, 139, 0.12)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '1.6rem', flexShrink: 0, transition: 'background 0.3s',
+              }}>
+                {maintenanceMode ? '🚧' : '🌐'}
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-1)' }}>
+                    Mode Pemeliharaan (Under Maintenance)
+                  </span>
+                  {maintenanceMode && (
+                    <span className="badge badge-waiting" style={{ background: 'rgba(245, 158, 11, 0.2)', color: '#f59e0b', borderColor: '#f59e0b' }}>
+                      AKTIF
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: '0.82rem', color: 'var(--text-3)' }}>
+                  {maintenanceMode
+                    ? 'Maintenance aktif: Semua user dialihkan ke halaman perbaikan. Admin tetap bisa akses & login via /login.'
+                    : 'Website normal: Seluruh user dan pengunjung dapat mengakses website seperti biasa.'}
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={handleToggleMaintenance}
+              disabled={maintenanceToggling || loading}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '10px 20px', borderRadius: 'var(--radius-sm)',
+                border: `1px solid ${maintenanceMode ? '#00c896' : '#f59e0b'}`,
+                background: maintenanceMode ? 'rgba(0,200,150,0.1)' : 'rgba(245, 158, 11, 0.12)',
+                color: maintenanceMode ? '#00c896' : '#f59e0b',
+                fontWeight: 700, fontSize: '0.88rem', cursor: maintenanceToggling ? 'not-allowed' : 'pointer',
+                opacity: maintenanceToggling || loading ? 0.6 : 1, transition: 'all 0.2s',
+              }}
+            >
+              {maintenanceToggling
+                ? <><span className="spinner" style={{ width: 14, height: 14, borderColor: 'currentColor', borderTopColor: 'transparent' }} /> Menyimpan...</>
+                : maintenanceMode ? '✅ Matikan Maintenance' : '🚧 Aktifkan Maintenance'
               }
             </button>
           </div>
