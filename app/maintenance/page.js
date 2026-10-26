@@ -28,7 +28,7 @@ export default function MaintenancePage() {
           }
           router.push('/dashboard');
         }
-      } catch {}
+      } catch { }
     };
 
     fetchStatus();
@@ -69,11 +69,11 @@ export default function MaintenancePage() {
           <p style={{ margin: '0 0 20px' }}>
             Sorry for the inconvenience but we&rsquo;re performing some maintenance at the moment. If you need to you can always <a href="https://wa.me/naomikuniko" target="_blank" rel="noopener noreferrer" style={{ color: '#dc8100', textDecoration: 'none' }} onMouseEnter={e => e.currentTarget.style.color = '#333'} onMouseLeave={e => e.currentTarget.style.color = '#dc8100'}>contact us</a>, otherwise we&rsquo;ll be back online shortly!
           </p>
-          <p style={{ margin: '0 0 20px' }}>&mdash; The Team</p>
+          <p style={{ margin: '0 0 20px' }}>&mdash; Dunia Nokos</p>
         </div>
 
         {/* Akses login admin */}
-        <div style={{ marginTop: 60, paddingTop: 20, borderTop: '1px solid #eee' }}>
+        {/* <div style={{ marginTop: 60, paddingTop: 20, borderTop: '1px solid #eee' }}>
           <Link
             href="/login"
             style={{
@@ -86,7 +86,7 @@ export default function MaintenancePage() {
           >
             Admin Login &rarr;
           </Link>
-        </div>
+        </div> */}
       </article>
     </div>
   );
