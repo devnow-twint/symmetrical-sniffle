@@ -158,18 +158,18 @@ export default function DashboardPage() {
           <div className="card" style={{ marginBottom: 32 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <div className="card-title" style={{ fontSize: '1.1rem' }}>Pesanan Aktif</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Link
-                href="/order"
-                className="btn btn-ghost btn-sm"
-                style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-              >
-                📦 Order OTP
-              </Link>
-              <button className="btn btn-ghost btn-sm" onClick={handleRefresh} disabled={refreshing} style={{ padding: '6px 12px' }}>
-                {refreshing ? <span className="spinner" style={{ width: 14, height: 14 }}></span> : 'Refresh'}
-              </button>
-            </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Link
+                  href="/order"
+                  className="btn btn-ghost btn-sm"
+                  style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                >
+                  📦 Order OTP
+                </Link>
+                <button className="btn btn-ghost btn-sm" onClick={handleRefresh} disabled={refreshing} style={{ padding: '6px 12px' }}>
+                  {refreshing ? <span className="spinner" style={{ width: 14, height: 14 }}></span> : 'Refresh'}
+                </button>
+              </div>
             </div>
             {/* Warning when active orders exist */}
             {activeOrders.length > 0 && (
@@ -272,7 +272,7 @@ export default function DashboardPage() {
                   LIHAT OTP REALTIME &amp; BATALKAN PESANAN
                 </div>
                 <div style={{ fontSize: '0.77rem', color: 'var(--text-3)' }}>
-                  Pantau OTP masuk secara live, request SMS ulang (resend), dan kelola order aktif di halaman Order
+                  Pantau OTP masuk secara live, dan kelola order aktif di halaman Order
                 </div>
               </div>
             </div>

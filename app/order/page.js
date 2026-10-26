@@ -1308,24 +1308,7 @@ export default function OrderPage() {
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
                         {isRealOtp(order.otp_code) ? (
                           <>
-                            {(() => {
-                              const resendMaxed = ((order.otp_codes && order.otp_codes.length) || 1) >= 2;
-                              const resendExpired = order.expires_at && new Date(order.expires_at).getTime() <= now;
-                              const resendBusy = actionLoading === order.order_id || order.resend_pending;
-                              const resendOff = resendMaxed || resendExpired;
-                              return (
-                                <button className="btn btn-ghost btn-sm"
-                                  onClick={() => !resendOff && !resendBusy && handleResend(order.order_id)}
-                                  disabled={resendOff || resendBusy}
-                                  style={{ width: '100%', opacity: resendOff ? 0.55 : 1, cursor: resendOff ? 'not-allowed' : 'pointer' }}>
-                                  {resendMaxed
-                                    ? 'Resend SMS tidak tersedia (maksimal 2 kode OTP)'
-                                    : resendExpired
-                                      ? 'Resend SMS (waktu aktivasi sudah melebihi 25 menit)'
-                                      : order.resend_pending ? '⏳ Menunggu SMS berikutnya...' : '🔁 Resend SMS'}
-                                </button>
-                              );
-                            })()}
+                            {/* Tombol Resend SMS disembunyikan sementara */}
                             <button className="btn btn-primary btn-sm" onClick={() => handleComplete(order.order_id)} disabled={actionLoading === order.order_id}
                               style={{ width: '100%' }}>
                               ✅ Pesanan Selesai
