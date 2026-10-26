@@ -208,7 +208,7 @@ export default function DashboardPage() {
                 <table className="responsive">
                   <thead>
                     <tr>
-                      <th>Layanan</th><th>Nomor</th><th>Harga</th><th>Status</th><th>Aksi</th>
+                      <th>Layanan</th><th>Nomor</th><th>Harga</th><th>Status</th><th>Kode OTP</th><th>Aksi</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -223,6 +223,9 @@ export default function DashboardPage() {
                         <td data-label="Nomor" className="mono-cell" style={{ color: 'var(--text-2)' }}>{o.phone_number || 'Menunggu...'}</td>
                         <td data-label="Harga" className="mono-cell">Rp{Number(o.price).toLocaleString('id-ID')}</td>
                         <td data-label="Status">{statusBadge(o.status)}</td>
+                        <td data-label="Kode OTP" className="mono-cell" style={{ color: o.otp_code ? 'var(--green)' : 'var(--text-3)', fontWeight: o.otp_code ? 700 : 400 }}>
+                          {o.otp_code || '—'}
+                        </td>
                         <td data-label="Aksi">
                           <Link
                             href="/order"

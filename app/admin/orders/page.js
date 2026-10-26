@@ -133,7 +133,7 @@ export default function AdminOrdersPage() {
             borderRadius:'var(--radius-sm)', padding:'10px 14px', marginBottom:16,
             fontSize:'0.8rem', color:'var(--text-2)', lineHeight:1.7,
           }}>
-            ⚠ <strong>Refund Manual:</strong> Tombol <span style={{ color:'var(--red)' }}>Refund</span> akan mengembalikan saldo user &amp; <strong>menghapus permanen</strong> baris order tersebut. Gunakan untuk order yang stuck dan tidak bisa dibatalkan via provider.
+            ℹ️ <strong>Refund Manual:</strong> Tombol <span style={{ color:'var(--red)' }}>Refund</span> akan mengembalikan saldo ke akun user &amp; mengubah status pesanan menjadi <strong>Dibatalkan</strong> (data pesanan tetap tersimpan di riwayat).
           </div>
 
           {/* Filter tabs */}
@@ -238,20 +238,24 @@ export default function AdminOrdersPage() {
                             >
                               👁
                             </button>
-                            <button
-                              className="btn btn-sm"
-                              onClick={() => setRefundModal({ order_id: o.order_id, username: o.username, price: o.price, service: o.service })}
-                              style={{
-                                background:'rgba(230,57,70,0.12)', border:'1px solid rgba(230,57,70,0.4)',
-                                color:'var(--red)', fontWeight:600, fontSize:'0.75rem',
-                                padding:'4px 10px', borderRadius:6, cursor:'pointer',
-                                transition:'all 0.15s', fontFamily:'var(--font)',
-                              }}
-                              onMouseEnter={e => { e.currentTarget.style.background='rgba(230,57,70,0.25)'; }}
-                              onMouseLeave={e => { e.currentTarget.style.background='rgba(230,57,70,0.12)'; }}
-                            >
-                              ↩ Refund
-                            </button>
+                            {o.status === 'canceled' ? (
+                              <span style={{ fontSize:'0.75rem', color:'var(--text-3)', padding:'4px 8px' }}>—</span>
+                            ) : (
+                              <button
+                                className="btn btn-sm"
+                                onClick={() => setRefundModal({ order_id: o.order_id, username: o.username, price: o.price, service: o.service })}
+                                style={{
+                                  background:'rgba(230,57,70,0.12)', border:'1px solid rgba(230,57,70,0.4)',
+                                  color:'var(--red)', fontWeight:600, fontSize:'0.75rem',
+                                  padding:'4px 10px', borderRadius:6, cursor:'pointer',
+                                  transition:'all 0.15s', fontFamily:'var(--font)',
+                                }}
+                                onMouseEnter={e => { e.currentTarget.style.background='rgba(230,57,70,0.25)'; }}
+                                onMouseLeave={e => { e.currentTarget.style.background='rgba(230,57,70,0.12)'; }}
+                              >
+                                ↩ Refund
+                              </button>
+                            )}
                           </td>
                         </tr>
                       );
@@ -358,8 +362,8 @@ export default function AdminOrdersPage() {
                   <div><span style={{ color:'var(--text-3)' }}>Nominal Refund:</span> <strong style={{ color:'var(--accent)' }}>Rp{Number(refundModal.price).toLocaleString('id-ID')}</strong></div>
                   <div><span style={{ color:'var(--text-3)' }}>Order ID:</span> <span style={{ fontFamily:'var(--mono)', fontSize:'0.78rem' }}>{refundModal.order_id}</span></div>
                 </div>
-                <div style={{ fontSize:'0.78rem', color:'var(--red)', marginBottom:20, textAlign:'center' }}>
-                  ⚠ Saldo akan dikembalikan &amp; order dihapus permanen. Tidak bisa di-undo!
+                <div style={{ fontSize:'0.8rem', color:'var(--text-2)', marginBottom:20, textAlign:'center' }}>
+                  Saldo sebesar <strong style={{ color:'var(--accent)' }}>Rp{Number(refundModal.price).toLocaleString('id-ID')}</strong> akan dikembalikan ke user &amp; status order diubah menjadi <strong>Dibatalkan</strong>. Data order tetap tersimpan di riwayat.
                 </div>
                 <div style={{ display:'flex', gap:10 }}>
                   <button

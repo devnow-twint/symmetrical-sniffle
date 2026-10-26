@@ -42,6 +42,10 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Order ini sudah pernah di-refund.' }, { status: 400 });
     }
 
+    if (order.status === 'canceled') {
+      return NextResponse.json({ error: 'Order ini sudah berstatus dibatalkan.' }, { status: 400 });
+    }
+
     // 1. Kembalikan saldo user via atomic RPC
     const { error: rpcErr } = await supabase.rpc('increment_balance', {
       uid: order.user_id,
@@ -68,24 +72,26 @@ export async function POST(request) {
       },
     });
 
-    // 3. Hapus row order dari DB
-    const { error: deleteErr } = await supabase
+    // 3. Update status order menjadi canceled (data tetap disimpan di database)
+    const { error: updateErr } = await supabase
       .from('orders')
-      .delete()
+      .update({
+        status: 'canceled',
+        resend_pending: false,
+      })
       .eq('order_id', order_id);
 
-    if (deleteErr) {
-      // Saldo sudah dikembalikan, tapi gagal hapus — log saja
-      console.error('Failed to delete order after refund:', deleteErr);
+    if (updateErr) {
+      console.error('Failed to update order status after refund:', updateErr);
       return NextResponse.json({
         success: true,
-        warning: 'Saldo berhasil dikembalikan, tapi order gagal dihapus. Hapus manual via Supabase.',
+        warning: 'Saldo berhasil dikembalikan, tetapi status order gagal diupdate: ' + updateErr.message,
       });
     }
 
     return NextResponse.json({
       success: true,
-      message: `Refund berhasil. Rp${Number(order.price).toLocaleString('id-ID')} dikembalikan ke user & order dihapus.`,
+      message: `Refund berhasil. Rp${Number(order.price).toLocaleString('id-ID')} dikembalikan ke user dan status order diubah menjadi Dibatalkan.`,
     });
 
   } catch (err) {
