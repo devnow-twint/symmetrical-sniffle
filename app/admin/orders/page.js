@@ -31,6 +31,14 @@ export default function AdminOrdersPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [refundModal, setRefundModal] = useState(null); // {order_id, username, price, service}
   const [refundLoading, setRefundLoading] = useState(false);
+  const [detailModal, setDetailModal] = useState(null); // order object
+  const [copied, setCopied] = useState('');
+  const copyText = (text) => {
+    try { navigator.clipboard.writeText(String(text)); setCopied(String(text)); setTimeout(() => setCopied(''), 1500); } catch {}
+  };
+  const getCodes = (o) => (Array.isArray(o.otp_codes) && o.otp_codes.length)
+    ? o.otp_codes
+    : (o.otp_code && o.otp_code !== '-' ? [o.otp_code] : []);
   const [msg, setMsg] = useState({ type: '', text: '' });
 
   useEffect(() => {
@@ -193,9 +201,20 @@ export default function AdminOrdersPage() {
                             {o.phone_number || '—'}
                           </td>
                           <td style={{ fontFamily:'var(--mono)', fontSize:'0.82rem' }}>
-                            {o.otp_code && o.otp_code !== '-' ? (
-                              <span style={{ color:'var(--green)', fontWeight:600 }}>{o.otp_code}</span>
-                            ) : <span style={{ color:'var(--text-3)' }}>—</span>}
+                            {(() => {
+                              const codes = getCodes(o);
+                              if (codes.length === 0) return <span style={{ color:'var(--text-3)' }}>—</span>;
+                              return (
+                                <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
+                                  {codes.map((c, i) => (
+                                    <span key={i} style={{ color:'var(--green)', fontWeight:600 }}>
+                                      {codes.length > 1 && <span style={{ color:'var(--text-3)', fontWeight:400, fontSize:'0.7rem' }}>#{i + 1} </span>}{c}
+                                    </span>
+                                  ))}
+                                  {o.resend_pending && <span style={{ color:'var(--yellow)', fontSize:'0.7rem' }}>⏳ menunggu kode berikutnya</span>}
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td>
                             <span className={`badge ${STATUS_BADGE[o.status] || 'badge-waiting'}`}>
@@ -208,7 +227,15 @@ export default function AdminOrdersPage() {
                           <td style={{ color:'var(--text-3)', fontSize:'0.75rem', whiteSpace:'nowrap' }}>
                             {new Date(o.created_at).toLocaleString('id-ID', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}
                           </td>
-                          <td>
+                          <td style={{ whiteSpace:'nowrap' }}>
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              title="Lihat detail order"
+                              onClick={() => setDetailModal(o)}
+                              style={{ marginRight:6, padding:'4px 10px', fontSize:'0.9rem' }}
+                            >
+                              👁
+                            </button>
                             <button
                               className="btn btn-sm"
                               onClick={() => setRefundModal({ order_id: o.order_id, username: o.username, price: o.price, service: o.service })}
@@ -250,6 +277,68 @@ export default function AdminOrdersPage() {
               </div>
             )}
           </div>
+
+          {/* Detail Order Modal */}
+          {detailModal && (
+            <div onClick={() => setDetailModal(null)}
+              style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000, padding:16 }}>
+              <div className="card" onClick={e => e.stopPropagation()}
+                style={{ width:460, maxWidth:'100%', maxHeight:'90vh', overflowY:'auto', background:'var(--bg-1)' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+                  <div className="card-title" style={{ margin:0 }}>👁 Detail Order</div>
+                  <span className={`badge ${STATUS_BADGE[detailModal.status] || 'badge-waiting'}`}>{detailModal.status}</span>
+                </div>
+
+                <div style={{ background:'var(--bg-2)', borderRadius:'var(--radius-sm)', padding:'12px 14px', fontSize:'0.85rem', lineHeight:1.9, marginBottom:14 }}>
+                  <div><span style={{ color:'var(--text-3)' }}>User:</span> <strong>{detailModal.username}</strong></div>
+                  <div><span style={{ color:'var(--text-3)' }}>Layanan:</span> {detailModal.service} · {detailModal.country}</div>
+                  <div><span style={{ color:'var(--text-3)' }}>Harga:</span> Rp{Number(detailModal.price).toLocaleString('id-ID')}</div>
+                  <div><span style={{ color:'var(--text-3)' }}>Order ID:</span> <span style={{ fontFamily:'var(--mono)', fontSize:'0.78rem' }}>{detailModal.order_id}</span></div>
+                  <div><span style={{ color:'var(--text-3)' }}>Dibuat:</span> {new Date(detailModal.created_at).toLocaleString('id-ID')}</div>
+                  {detailModal.expires_at && <div><span style={{ color:'var(--text-3)' }}>Expired:</span> {new Date(detailModal.expires_at).toLocaleString('id-ID')}</div>}
+                </div>
+
+                <div style={{ fontSize:'0.72rem', color:'var(--text-3)', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:6 }}>Nomor</div>
+                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14 }}>
+                  <span style={{ fontFamily:'var(--mono)', fontSize:'1.05rem', fontWeight:600 }}>{detailModal.phone_number || '—'}</span>
+                  {detailModal.phone_number && (
+                    <button className="btn btn-ghost btn-sm" onClick={() => copyText(detailModal.phone_number)}>
+                      {copied === String(detailModal.phone_number) ? '✅' : '📋'}
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ fontSize:'0.72rem', color:'var(--text-3)', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:6 }}>Kode OTP</div>
+                {(() => {
+                  const codes = getCodes(detailModal);
+                  if (codes.length === 0) return <div style={{ color:'var(--text-3)', fontSize:'0.85rem', marginBottom:14 }}>Belum ada kode masuk</div>;
+                  return (
+                    <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:14 }}>
+                      {codes.map((c, i) => (
+                        <div key={i} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', background:'var(--bg-2)', border:'1px dashed var(--accent)', borderRadius:'var(--radius-sm)', padding:'8px 12px' }}>
+                          <div>
+                            <div style={{ fontSize:'0.7rem', color:'var(--text-3)' }}>Kode {i + 1}{i === codes.length - 1 && codes.length > 1 ? ' (terbaru)' : ''}</div>
+                            <div style={{ fontFamily:'var(--mono)', fontSize:'1.3rem', fontWeight:700, color:'var(--accent)', letterSpacing:2 }}>{c}</div>
+                          </div>
+                          <button className="btn btn-ghost btn-sm" onClick={() => copyText(c)}>{copied === String(c) ? '✅' : '📋'}</button>
+                        </div>
+                      ))}
+                      {detailModal.resend_pending && (
+                        <div style={{ color:'var(--yellow)', fontSize:'0.8rem' }}>⏳ User sudah minta SMS ulang — menunggu kode berikutnya</div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                <div style={{ fontSize:'0.72rem', color:'var(--text-3)', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:6 }}>📩 Isi SMS (terbaru)</div>
+                <div style={{ background:'var(--bg-2)', border:'1px solid var(--border)', borderRadius:'var(--radius-sm)', padding:'10px 14px', fontSize:'0.85rem', fontFamily:'var(--mono)', lineHeight:1.6, wordBreak:'break-word', marginBottom:16 }}>
+                  {detailModal.otp_text || <span style={{ color:'var(--text-3)' }}>Tidak ada isi SMS tersimpan</span>}
+                </div>
+
+                <button className="btn btn-ghost btn-full" onClick={() => setDetailModal(null)}>Tutup</button>
+              </div>
+            </div>
+          )}
 
           {/* Refund Confirm Modal */}
           {refundModal && (

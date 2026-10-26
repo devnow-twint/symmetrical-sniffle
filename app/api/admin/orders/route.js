@@ -22,6 +22,7 @@ export async function GET(request) {
       .from('orders')
       .select(`
         id, order_id, service, country, operator, phone_number, otp_code,
+        otp_text, otp_codes, resend_pending,
         status, price, created_at, expires_at, server, user_id,
         profiles:user_id (username)
       `, { count: 'exact' })

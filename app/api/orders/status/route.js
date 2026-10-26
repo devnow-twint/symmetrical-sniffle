@@ -21,13 +21,43 @@ export async function GET(request) {
     // Single query — ambil semua field sekaligus (user_id, server, price, status)
     // Sebelumnya 2 query terpisah → sekarang 1 query, hemat 1 DB round-trip per polling
     const { data: orderRow } = await supabase
-      .from('orders').select('user_id, server, price, status, otp_code').eq('order_id', order_id).single();
+      .from('orders').select('user_id, server, price, status, otp_code, otp_codes, otp_text, resend_pending').eq('order_id', order_id).single();
     if (!orderRow || orderRow.user_id !== user.id) {
       return NextResponse.json({ error: 'Order tidak ditemukan' }, { status: 404 });
     }
 
     // Cek status dari data yang sudah diambil — jangan poll provider kalau sudah final
-    const currentOrder = { status: orderRow.status };
+    const currentOrder = {
+      status: orderRow.status,
+      otp_code: orderRow.otp_code,
+      otp_codes: orderRow.otp_codes,
+      otp_text: orderRow.otp_text,
+      resend_pending: orderRow.resend_pending,
+    };
+
+    // ── Resend SMS: order 'received' yang sedang menunggu kode ke-2 ─────────────
+    if (orderRow.status === 'received' && orderRow.resend_pending) {
+      const prov = await getOrderStatus(order_id, orderRow.server || server);
+      const known = Array.isArray(orderRow.otp_codes) ? orderRow.otp_codes : [];
+      const resendData = {
+        status: 'received',
+        otp_code: orderRow.otp_code,
+        otp_codes: known,
+        otp_text: orderRow.otp_text,
+        resend_pending: true,
+      };
+      if (prov.success && prov.data.status === 'received' && prov.data.otp_code && prov.data.otp_code !== '-'
+          && !known.includes(prov.data.otp_code)) {
+        const newCodes = [...known, prov.data.otp_code];
+        await supabase.from('orders')
+          .update({ otp_code: prov.data.otp_code, otp_codes: newCodes, resend_pending: false })
+          .eq('order_id', order_id)
+          .eq('status', 'received');
+        Object.assign(resendData, { otp_code: prov.data.otp_code, otp_codes: newCodes, resend_pending: false });
+      }
+      return NextResponse.json({ success: true, data: resendData });
+    }
+
     if (!['waiting', 'expiring'].includes(orderRow.status)) {
       // Order already finalized (canceled/completed/received) — skip provider poll
       return NextResponse.json({ success: true, data: currentOrder });
@@ -41,7 +71,7 @@ export async function GET(request) {
       if (data.data.status === 'received' && data.data.otp_code && data.data.otp_code !== '-') {
         // OTP masuk — simpan kode dan tandai received
         await supabase.from('orders')
-          .update({ otp_code: data.data.otp_code, status: 'received' })
+          .update({ otp_code: data.data.otp_code, otp_codes: [data.data.otp_code], status: 'received' })
           .eq('order_id', order_id)
           .in('status', ['waiting', 'expiring']);
 

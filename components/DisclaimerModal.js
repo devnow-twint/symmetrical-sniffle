@@ -42,7 +42,7 @@ const DisclaimerModal = forwardRef(function DisclaimerModal(_, ref) {
   if (!visible) return null;
 
   const bulletPoints = [
-    'Dunia Nokos hanya menyediakan kode OTP untuk verifikasi. Diterimanya OTP tidak menjamin berhasil login atau mendaftar akun.',
+    <>Dunia Nokos hanya menyediakan kode OTP untuk verifikasi. Diterimanya OTP tidak menjamin berhasil login atau mendaftar akun. <strong>(apalagi nomor luar negeri)</strong></>,
     'Keberhasilan login, pembatasan akun, dan pemblokiran nomor (banned/kenon) bergantung pada sistem WhatsApp. Kami tidak dapat memastikan penyebab pemblokiran atau menjamin nomor bebas dari pemblokiran.',
     'Pastikan metode pengiriman kode yang dipilih adalah SMS, bukan panggilan atau metode lainnya.',
     'Jika OTP belum masuk, tunggu sekitar 5–10 menit. Apabila tetap tidak masuk dan opsi pembatalan tersedia, batalkan pesanan sebelum membeli nomor baru.',

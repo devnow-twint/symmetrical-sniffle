@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabase';
 import { getAuthUser } from '@/lib/auth';
-import { cancelOrder, doneOrder, getOrderStatus } from '@/lib/otpProvider';
+import { cancelOrder, doneOrder, getOrderStatus, resendOrder } from '@/lib/otpProvider';
 
 export async function POST(request) {
   try {
@@ -19,16 +19,43 @@ export async function POST(request) {
     // Verify the order belongs to this user
     const { data: order, error: orderErr } = await supabase
       .from('orders')
-      .select('price, user_id, status, server, created_at, expires_at, otp_code')
+      .select('price, user_id, status, server, created_at, expires_at, otp_code, otp_codes, resend_pending')
       .eq('order_id', order_id)
       .single();
 
     if (orderErr || !order) return NextResponse.json({ error: 'Order tidak ditemukan' }, { status: 404 });
     if (order.user_id !== user.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-    // SMS Bower: resend not exposed (use cancel + reorder)
+    // ── Resend SMS (SMS Bower setStatus=3 → ACCESS_RETRY_GET) ───────────
     if (status === 'resend') {
-      return NextResponse.json({ success: false, error: 'Permintaan OTP ulang tidak didukung. Silakan batalkan dan order baru.' }, { status: 400 });
+      const hasOtp = order.otp_code && order.otp_code !== '-';
+      if (order.status !== 'received' || !hasOtp) {
+        return NextResponse.json({ success: false, error: 'Resend hanya bisa dilakukan setelah kode OTP pertama masuk.' }, { status: 400 });
+      }
+      if (order.resend_pending) {
+        return NextResponse.json({ success: false, error: 'Permintaan SMS ulang sedang diproses. Tunggu kode berikutnya.' }, { status: 400 });
+      }
+      if (Array.isArray(order.otp_codes) && order.otp_codes.length >= 2) {
+        return NextResponse.json({ success: false, error: 'Resend SMS sudah tidak bisa dilakukan (maksimal 2 kode OTP).' }, { status: 400 });
+      }
+      if (order.expires_at && new Date(order.expires_at).getTime() <= Date.now()) {
+        return NextResponse.json({ success: false, error: 'Resend SMS tidak bisa dilakukan (waktu aktivasi sudah melebihi 25 menit).' }, { status: 400 });
+      }
+
+      const isTestOrder = String(order_id).startsWith('RSTEST') && process.env.NODE_ENV !== 'production';
+      const data = isTestOrder ? { success: true } : await resendOrder(order_id);
+      console.log(`[resend] order=${order_id} response=`, JSON.stringify(data));
+      if (!data.success) {
+        return NextResponse.json({ success: false, error: data.message || 'Gagal meminta SMS ulang.' }, { status: 400 });
+      }
+
+      const codes = Array.isArray(order.otp_codes) && order.otp_codes.length > 0 ? order.otp_codes : [order.otp_code];
+      await supabase.from('orders')
+        .update({ otp_codes: codes, resend_pending: true })
+        .eq('order_id', order_id)
+        .eq('status', 'received');
+
+      return NextResponse.json({ success: true, message: 'Permintaan SMS ulang dikirim. Menunggu kode berikutnya.' });
     }
 
     // ── Mark as completed (user confirms OTP received) ──────────────────

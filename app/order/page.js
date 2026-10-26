@@ -246,8 +246,11 @@ export default function OrderPage() {
 
   // ── Smart Auto-poll: cek provider tiap 10 detik HANYA saat ada order pending ──
   // Fallback hemat DB saat webhook provider delay/terlewat.
-  const isPendingOrder = (o) => ['waiting', 'expiring'].includes(o.status) && !isRealOtp(o.otp_code);
+  const isPendingOrder = (o) =>
+    (['waiting', 'expiring'].includes(o.status) && !isRealOtp(o.otp_code)) ||
+    (o.status === 'received' && o.resend_pending);
   const hasPendingOrders = activeOrders.some(isPendingOrder);
+  const hasResendWaiting = activeOrders.some(o => o.status === 'received' && o.resend_pending);
 
   useEffect(() => {
     if (!hasPendingOrders) return;
@@ -287,7 +290,7 @@ export default function OrderPage() {
                   changed = true;
                   return null;
                 }
-                if (u.data.status !== o.status || u.data.otp_code !== o.otp_code) {
+                if (u.data.status !== o.status || u.data.otp_code !== o.otp_code || u.data.resend_pending !== o.resend_pending) {
                   changed = true;
                   return { ...o, ...u.data };
                 }
@@ -302,10 +305,10 @@ export default function OrderPage() {
           refreshProfile();
         }
       }
-    }, 10000);
+    }, hasResendWaiting ? 3000 : 10000);
 
     return () => clearInterval(interval);
-  }, [hasPendingOrders]);
+  }, [hasPendingOrders, hasResendWaiting]);
 
   // ── Supabase Realtime: DINONAKTIFKAN (penyebab replication slot stuck 44m dan ratusan error di Postgres) ──
   // Status dan OTP sepenuhnya ditangani oleh Smart Auto-poll 10s & SMS Bower Webhook.
@@ -554,7 +557,7 @@ export default function OrderPage() {
   };
 
   const retryServices = () => selectedCountry && handleCountryChange(selectedCountry.id);
-  const retryPrices   = () => selectedService && selectedCountry && handleServiceChange(selectedService.service_code);
+  const retryPrices = () => selectedService && selectedCountry && handleServiceChange(selectedService.service_code);
 
 
   // Cek maintenance (23:00 - 00:10 WIB)
@@ -703,6 +706,30 @@ export default function OrderPage() {
       }
     } catch {
       await loadActiveOrders();
+      swalError('Kesalahan Jaringan', 'Tidak bisa terhubung ke server. Periksa koneksi kamu.');
+    }
+    setActionLoading(null);
+  };
+
+  const handleResend = async (orderId) => {
+    setActionLoading(orderId);
+    swalLoading('Meminta SMS ulang...', 'Mohon tunggu sebentar');
+    try {
+      const res = await fetch('/api/orders/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getFreshHeaders() },
+        body: JSON.stringify({ order_id: orderId, status: 'resend', server: 'smsbower' }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setActiveOrders(prev => prev.map(o => o.order_id === orderId
+          ? { ...o, resend_pending: true, otp_codes: (o.otp_codes && o.otp_codes.length) ? o.otp_codes : [o.otp_code] }
+          : o));
+        swalSuccess('Permintaan Terkirim ✅', 'Silakan kirim ulang kode di aplikasi tujuan. Kode ke-2 akan muncul otomatis.');
+      } else {
+        swalError('Resend SMS Gagal', data.error || 'Terjadi kesalahan server');
+      }
+    } catch {
       swalError('Kesalahan Jaringan', 'Tidak bisa terhubung ke server. Periksa koneksi kamu.');
     }
     setActionLoading(null);
@@ -1152,7 +1179,24 @@ export default function OrderPage() {
 
                         {isRealOtp(order.otp_code) ? (
                           <>
-                            <div className="otp-number">{order.otp_code}</div>
+                            {(() => {
+                              const codes = (order.otp_codes && order.otp_codes.length) ? order.otp_codes : [order.otp_code];
+                              return codes.map((c, idx) => (
+                                <div key={idx} style={{ marginTop: idx === 0 ? 0 : 10 }}>
+                                  {codes.length > 1 && (
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>
+                                      Kode {idx + 1}{idx === codes.length - 1 ? ' (terbaru)' : ''}
+                                    </div>
+                                  )}
+                                  <div className="otp-number">{c}</div>
+                                </div>
+                              ));
+                            })()}
+                            {order.resend_pending && (
+                              <div style={{ margin: '12px 0 0', display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center', color: 'var(--text-2)', fontSize: '0.85rem' }}>
+                                <span className="spinner" style={{ width: 14, height: 14 }}></span> Menunggu kode berikutnya (SMS ulang)...
+                              </div>
+                            )}
                             <div className="alert alert-success" style={{ marginTop: 12, display: 'inline-block' }}>
                               ✅ OTP Berhasil!
                             </div>
@@ -1259,10 +1303,30 @@ export default function OrderPage() {
 
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
                         {isRealOtp(order.otp_code) ? (
-                          <button className="btn btn-primary btn-sm" onClick={() => handleComplete(order.order_id)} disabled={actionLoading === order.order_id}
-                            style={{ width: '100%' }}>
-                            ✅ Pesanan Selesai
-                          </button>
+                          <>
+                            {(() => {
+                              const resendMaxed = ((order.otp_codes && order.otp_codes.length) || 1) >= 2;
+                              const resendExpired = order.expires_at && new Date(order.expires_at).getTime() <= now;
+                              const resendBusy = actionLoading === order.order_id || order.resend_pending;
+                              const resendOff = resendMaxed || resendExpired;
+                              return (
+                                <button className="btn btn-ghost btn-sm"
+                                  onClick={() => !resendOff && !resendBusy && handleResend(order.order_id)}
+                                  disabled={resendOff || resendBusy}
+                                  style={{ width: '100%', opacity: resendOff ? 0.55 : 1, cursor: resendOff ? 'not-allowed' : 'pointer' }}>
+                                  {resendMaxed
+                                    ? 'Resend SMS tidak tersedia (maksimal 2 kode OTP)'
+                                    : resendExpired
+                                      ? 'Resend SMS (waktu aktivasi sudah melebihi 25 menit)'
+                                      : order.resend_pending ? '⏳ Menunggu SMS berikutnya...' : '🔁 Resend SMS'}
+                                </button>
+                              );
+                            })()}
+                            <button className="btn btn-primary btn-sm" onClick={() => handleComplete(order.order_id)} disabled={actionLoading === order.order_id}
+                              style={{ width: '100%' }}>
+                              ✅ Pesanan Selesai
+                            </button>
+                          </>
                         ) : (() => {
                           // Hitung usia order untuk lockout 2 menit
                           const orderAgeMs = order.created_at ? now - new Date(order.created_at).getTime() : Infinity;
@@ -1304,7 +1368,7 @@ export default function OrderPage() {
                 <div className="card-title" style={{ marginBottom: 12, fontSize: '0.9rem' }}>💡 Tips</div>
                 {[
                   'Pilih harga termurah dengan stok terbanyak untuk peluang sukses terbesar',
-                  'OTP biasanya masuk dalam 30 detik – 2 menit',
+                  'OTP biasanya masuk dalam 30 detik – 2 menit (tergantung harga dan juga dari provider)',
                   'Batalkan jika OTP tidak masuk dalam 5 menit — saldo refund otomatis',
                   'Coba negara berbeda jika stok habis',
                 ].map((tip, i) => (

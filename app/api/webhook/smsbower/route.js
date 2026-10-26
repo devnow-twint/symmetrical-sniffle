@@ -66,12 +66,33 @@ export async function POST(request) {
 
     const supabase = getServiceSupabase();
 
+    // ── Resend SMS: kode ke-2 (order sudah 'received' & resend_pending) ─────────
+    const { data: existing } = await supabase
+      .from('orders')
+      .select('status, otp_codes, resend_pending')
+      .eq('order_id', orderId)
+      .maybeSingle();
+
+    if (existing && existing.status === 'received' && existing.resend_pending) {
+      const known = Array.isArray(existing.otp_codes) ? existing.otp_codes : [];
+      if (!known.includes(otpCode)) {
+        await supabase.from('orders')
+          .update({ otp_code: otpCode, otp_codes: [...known, otpCode], otp_text: text || null, resend_pending: false })
+          .eq('order_id', orderId)
+          .eq('status', 'received')
+          .eq('resend_pending', true);
+        console.log(`[webhook/smsbower] ✅ RESEND OTP saved: order=${orderId} code=${otpCode}`);
+      }
+      return NextResponse.json({ ok: true }, { status: 200 });
+    }
+
     // ── Update Order: set otp_code + otp_text + status received ────────────────
     // Hanya update kalau masih waiting/expiring (idempotent)
     const { data: updatedOrder, error: updateErr } = await supabase
       .from('orders')
       .update({
         otp_code:   otpCode,
+        otp_codes:  [otpCode],
         otp_text:   text || null,     // ← isi SMS lengkap (e.g. "Your code is 12345, valid 5 min")
         status:     'received',
       })
